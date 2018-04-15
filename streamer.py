@@ -826,7 +826,7 @@ class YmReader(object):
         STRIP_GD3 = False
         VGM_FREQUENCY = 44100
         if not STRIP_GD3: # disable for no GD3 tag
-            gd3_data.extend('title_eng' + b'\x00\x00')
+            gd3_data.extend( self.__header['song_name'] + b'\x00\x00') #title_eng' + b'\x00\x00')
             gd3_data.extend('title_jap' + b'\x00\x00')
             gd3_data.extend('game_eng' + b'\x00\x00')
             gd3_data.extend('game_jap' + b'\x00\x00')
