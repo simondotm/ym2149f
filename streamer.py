@@ -34,11 +34,55 @@ import math
 # Noise frequency is (Clock / 16 x NP) [NP is noise pitch R6]
 # Noise and/or Tone is output when Mixer flag is set to 0 for a channel
 # Mode [M] is 1, then envelope drives volume, when 0, the 4 bit value drives attenuation
-# Envelope repetition frequency is (Clock / 256 x EP) [EP is envelope frequency]
+# Envelope repetition frequency (fE) is (Clock / 256 x EP) [EP is envelope frequency]
 # Envelope shape has 10 valid settings - see data sheet for details
 
+# Envelope Generator
+# The envelope generator is a simple 5-bit counter, that can be incremented, decremented, reset or stopped
+# Control of it's behaviour is via R13
+# The output of the counter drives the attenuation of the output signal (in 5 bit precision rather than 4 bit normally)
+# The counter increments once every fE/32
+
+# By calculating the envelope frequency we can determine how fast any software simulation of the waveform would need to be
+# Writing to register 13 resets the envelope clock
+# r13 has a particular status. If the value stored in the file is 0xff, YM emulator will not reset the waveform position.
+
+# To get envelopes working on an SN chip we'd have to simulate the envelopes
+# by reprogramming attenuation registers at the correct frequency
+# Note that since the SN only has four bit of precision for volume, 
+# it is already half the required update frequency
+
+# Effects & Digidrums
+# Digidrums are 4-bit samples played on one of the 3 voices
+# Information for playback is encoded into the spare bits of the YM register data
+# Plus 2 'virtual' registers (14+15)
+# See ftp://ftp.modland.com/pub/documents/format_documentation/Atari%20ST%20Sound%20Chip%20Emulator%20YM1-6%20(.ay,%20.ym).txt
+
+# r1 free bits are used to code TS:
+# r1 bits b5-b4 is a 2bits code wich means:
+# 
+# 00:     No TS.
+# 01:     TS running on voice A
+# 10:     TS running on voice B
+# 11:     TS running on voice C
+
+# r1 bit b6 is only used if there is a TS running. If b6 is set, YM emulator must restart
+# the TIMER to first position (you must be VERY sound-chip specialist to hear the difference).
+# 
+# 
+# r3 free bits are used to code a DD start.
+# r3 b5-b4 is a 2bits code wich means:
+# 
+# 00:     No DD
+# 01:     DD starts on voice A
+# 10:     DD starts on voice B
+# 11:     DD starts on voice C
 
 
+# Setup 6522 VIA to tick over a counter at the freq we need
+# Then setup an interrupt at whatever period we can afford
+# Load VIA counter, look up in envelope table, set volume on channels with envelopes enabled
+# Could possibly do the digidrums this way too.
 
 
 
@@ -71,20 +115,49 @@ class YmReader(object):
          d['loop_frame'],
          d['extra_data'],
         ) = struct.unpack(ym_header, s)
+
+        #b0:     Set if Interleaved data block.
+        #b1:     Set if the digi-drum samples are signed data.
+        #b2:     Set if the digidrum is already in ST 4 bits format.
         d['interleaved'] = d['song_attributes'] & 0x01 != 0
+        d['dd_signed'] = d['song_attributes'] & 0x02 != 0
+        d['dd_stformat'] = d['song_attributes'] & 0x04 != 0
         self.__header = d
 
+        if d['interleaved']:
+            print "YM File is Interleaved format"
 
-        if self.__header['nb_digidrums'] != 0:
 
-            # skip the digidrums sections
-            print self.__fd.tell()
-            sample_size = struct.unpack('>I', self.__fd.read(4))[0]   # sample size
-            print sample_size
-            print self.__fd.tell()
-            print "sample_size="+str(sample_size)
-            self.__fd.seek(sample_size, 1)      # skip the sample data (for now)
-            print self.__fd.tell()            
+        # read any DD samples
+        num_dd = self.__header['nb_digidrums']
+        if num_dd != 0:
+
+            print "Music contains " + str(num_dd) + " digi drum samples"
+
+            # info
+            if d['dd_stformat']:
+                print " Samples are 4-bit ST format" # TODO: what does this mean?!
+            else:
+                print " Samples are UNKNOWN FORMAT" # TODO:so what format is it exactly?! 
+
+            if d['dd_signed']:
+                print " Samples are SIGNED"
+            else:
+                print " Samples are UNSIGNED"
+
+
+            for i in xrange(num_dd):
+                # skip over the digidrums sample file data section for now
+                #print self.__fd.tell()
+                sample_size = struct.unpack('>I', self.__fd.read(4))[0]   # get sample size
+
+                print "Found DigiDrums sample " + str(i) + ", " + str(sample_size) + " bytes, loading data..."
+
+                #print sample_size
+                #print self.__fd.tell()
+                #print "sample " + str(i) + " size="+str(sample_size)
+                self.__fd.seek(sample_size, 1)      # skip the sample data (for now)
+                #print self.__fd.tell()            
 
 
             #raise Exception('Unsupported file format: Digidrums are not supported')
@@ -131,6 +204,9 @@ class YmReader(object):
             print '*Warning* End! marker not found after frames'
 
     def __init__(self, fd):
+
+        print "Parsing YM file..."
+
         self.__fd = fd
         self.__parse_header()
         self.__data = []
@@ -156,7 +232,11 @@ class YmReader(object):
         clock = self.__header['chip_clock']
         cnt  = self.__header['nb_frames']
         regs = self.__data
-        print "Analysing"
+
+        digi_drums = self.__header['nb_digidrums']
+
+
+        print "Analysing & Converting YM file..."
 
         # prepare the vgm output
         #vgm_filename = "test.vgm"
@@ -238,35 +318,58 @@ class YmReader(object):
 
 
             # given a YM tone period, return the equivalent SN tone register period
-            def ym_to_sn(ym_tone):
+            def ym_to_sn(ym_tone, is_periodic = False):
+
+                # Adjust freq scale & baseline range if periodic noise selected
+                baseline_freq = sn_freq_lo
+                sn_freq_scale = 1.0
+                if is_periodic:
+                    sn_freq_scale = 15.0
+                    baseline_freq = sn_pfreq_lo
+
+                # tones should never exceed 12-bit range
+                # but some YM files encode extra info
+                # into the top 4 bits
 
                 if ym_tone > 4095:
                     print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
+                    ym_tone = ym_tone & 4095
+                    
+                # If the tone is 0, it's probably because
+                # there's a digidrum being played on this voice
                 if ym_tone == 0:
                     print " ERROR: ym tone is 0"
-                    ym_freq = 1
+                    ym_freq = 0
                 else:
                     ym_freq = (float(clock) / 16.0) / float(ym_tone)
 
-                # if the frequency goes below the range
-                # of the SN capabilities, add an octave
-                while ym_freq < sn_freq_lo:
-                    ym_freq *= 2.0
-                    print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
 
-                sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 )
-                
-                # due to the integer maths, some precision is lost at the lower end
-                sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
-                # clamp range to 10 bits
-                if sn_tone > 1023:
-                    sn_tone = 1023
-                    print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
-                if sn_tone < 1:
-                    sn_tone = 1
-                    print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
 
-                sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0)
+                    # if the frequency goes below the range
+                    # of the SN capabilities, add an octave
+                    while ym_freq < baseline_freq:
+                        print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
+                        ym_freq *= 2.0
+
+                # calculate the appropriate SN tone register value
+                if ym_freq == 0:
+                    sn_tone = 0
+                    sn_freq = 0
+                else:
+                    sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * sn_freq_scale )
+                    # due to the integer maths, some precision is lost at the lower end
+                    sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
+
+                    # clamp range to 10 bits
+                    if sn_tone > 1023:
+                        sn_tone = 1023
+                        print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+                        # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+                    if sn_tone < 1:
+                        sn_tone = 1
+                        print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
+
+                    sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
 
                 #print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
 
@@ -279,11 +382,18 @@ class YmReader(object):
             # As above, but for periodic white noise
             def ym_to_sn_periodic(ym_tone):
 
+                # tones should never exceed 12-bit range
+                # but some YM files encode extra info
+                # into the top 4 bits
                 if ym_tone > 4095:
                     print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
+                    ym_tone = ym_tone & 4095
+
+                # If the tone is 0, it's probably because
+                # there's a digidrum being played on this voice
                 if ym_tone == 0:
                     print " ERROR: ym tone is 0"
-                    ym_freq = 1
+                    ym_freq = 0
                 else:
                     ym_freq = (float(clock) / 16.0) / float(ym_tone)
 
@@ -340,19 +450,81 @@ class YmReader(object):
             #------------------------------------------------
             # extract the YM register values for this frame
             #------------------------------------------------
+
+            # volume attenuation level (if bit 4 is clear)
             ym_volume_a = get_register_byte(8) & 15
             ym_volume_b = get_register_byte(9) & 15
             ym_volume_c = get_register_byte(10) & 15
 
-            ym_tone_a = get_register_word(0)
-            ym_tone_b = get_register_word(2)
-            ym_tone_c = get_register_word(4)
-
-            ym_noise = get_register_byte(6)
-
+            # envelope attentuation mode flags
             ym_envelope_a = get_register_byte( 8) & 4
             ym_envelope_b = get_register_byte( 9) & 4
             ym_envelope_c = get_register_byte(10) & 4
+
+ 
+            # Have to properly mask these registers
+            # r1 bits 4-6 are used for TS info
+            # r3 bits 4-5 are used for DD info
+            ym_tone_a = get_register_word(0) & 4095
+            ym_tone_b = get_register_word(2) & 4095
+            ym_tone_c = get_register_word(4) & 4095
+
+            # R6 bits 5-6 are used for TP for TS setting
+            ym_noise = get_register_byte(6) & 31
+
+
+            ym_envelope_f = get_register_word(11)   # envelope frequency register
+
+
+            # YM file specific attributes (not YM2149 chip features)
+            # digi drums - in YM format, DD triggers are encoded into bits 4+5 of R3
+            # only 1 DD can be triggered per frame, on a specific voice
+            # TS = Timer Synth
+            # DD = Digidrums
+            # 
+
+            # trigger flags for TS and DD
+            # 2 bits where 00=No TS/DD 01=VoiceA 10=VoiceB 11=VoiceC
+            ts_on = (get_register_byte(1) >> 4) & 3
+            dd_on = (get_register_byte(3) >> 4) & 3
+
+            #r1 bit b6 is only used if there is a TS running. If b6 is set, YM emulator must restart
+            # the TIMER to first position (you must be VERY sound-chip specialist to hear the difference).
+
+            if ts_on:
+                print "ERROR: Timer Synth Trigger - Not handled yet"
+
+
+            # timer/sample rate encodings
+            # TC = Timer Count  (8-bits)
+            # TP = Timer Prediv (3-bits)
+            ts_tp = (get_register_byte(6) >> 5) & 7
+            ts_tc = get_register_byte(14) & 255
+
+            dd_tp = (get_register_byte(8) >> 5) & 7
+            dd_tc = get_register_byte(15) & 255
+
+# 4bits volume value (vmax) for TS is stored in the 4 free bits of r5 (b7-b4)
+
+            MFP_FREQ = 2457600
+            MFP_TABLE = [ 1, 4, 10, 16, 50, 64, 100, 200]
+            dd_freq = 0
+            if dd_on:
+                print "dd_tp=" + str(dd_tp)
+                print "dd_tc=" + str(dd_tc)
+                
+                dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
+
+            ts_freq = 0
+            if ts_on:
+                if ts_tc == 0:
+                    print "ERROR: Timer Synth TC value is 0 - unexpected & unhandled"
+                else:
+                    ts_freq = (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc
+
+            # If a DD is triggered on a voice, the volume register for that channel
+            # should be interpreted as a 5-bit sample number rather than a volume
+
 
             # output is on when mix bit is clear
             ym_mixer = get_register_byte(7)
@@ -364,7 +536,7 @@ class YmReader(object):
             ym_mix_noise_b = ym_mixer & (1<<4)
             ym_mix_noise_c = ym_mixer & (1<<5)
 
-
+            # calculate some additional variables
             ym_tone_a_max = max(ym_tone_a_max, ym_tone_a)
             ym_tone_b_max = max(ym_tone_b_max, ym_tone_b)
             ym_tone_c_max = max(ym_tone_c_max, ym_tone_c)
@@ -377,8 +549,7 @@ class YmReader(object):
             ym_freq_b = get_ym_frequency(ym_tone_b)
             ym_freq_c = get_ym_frequency(ym_tone_c)
             
-
-
+ 
             #------------------------------------------------
             # output VGM SN76489 equivalent data
             #------------------------------------------------
@@ -404,42 +575,43 @@ class YmReader(object):
                     output_sn_tone(1, ym_to_sn(ym_tone_b))
                     output_sn_tone(2, ym_to_sn(ym_tone_c))
                 else:
-                    print str(lo_count) + " channels out of range"
+                    print " " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
                     # mute channel 2
                     output_sn_volume(2, 0)     
 
-                    channel_map = [0,1,2]
+                    # Find the channel with the lowest frequency
+                    # And move it over to SN Periodic noise channel instead
                     if ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c:
                         # it's A
-                        channel_map = [2,1,0]
+                        print " Channel A -> Bass "                     
                         output_sn_volume(0, ym_volume_c)
                         output_sn_volume(1, ym_volume_b)
                         output_sn_volume(3, ym_volume_a)
 
                         output_sn_tone(0, ym_to_sn(ym_tone_c))
                         output_sn_tone(1, ym_to_sn(ym_tone_b))
-                        output_sn_tone(2, ym_to_sn_periodic(ym_tone_a))                        
+                        output_sn_tone(2, ym_to_sn(ym_tone_a, True))   
                     else:
                         if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
                             # it's B
-                            channel_map = [0,2,1]
+                            print " Channel B -> Bass "                     
                             output_sn_volume(0, ym_volume_a)
                             output_sn_volume(1, ym_volume_c)
                             output_sn_volume(3, ym_volume_b)
 
                             output_sn_tone(0, ym_to_sn(ym_tone_a))
                             output_sn_tone(1, ym_to_sn(ym_tone_c))
-                            output_sn_tone(2, ym_to_sn_periodic(ym_tone_b))                              
+                            output_sn_tone(2, ym_to_sn(ym_tone_b, True))                              
                         else:
                             # it's C    
-                            channel_map = [0,1,2]
+                            print " Channel C -> Bass "                     
                             output_sn_volume(0, ym_volume_a)
                             output_sn_volume(1, ym_volume_b)
                             output_sn_volume(3, ym_volume_c)
 
                             output_sn_tone(0, ym_to_sn(ym_tone_a))
                             output_sn_tone(1, ym_to_sn(ym_tone_b))
-                            output_sn_tone(2, ym_to_sn_periodic(ym_tone_c))                                 
+                            output_sn_tone(2, ym_to_sn(ym_tone_c, True))                                 
 
                            
 
@@ -540,14 +712,6 @@ class YmReader(object):
             s += " " + '{:2d}'.format( ym_volume_c )
             s += " ]"
 
-            # envelope
-            s += ", Env ["
-            s += " " + getregisterflag(get_register_byte( 8), 4, "-", "a")
-            s += " " + getregisterflag(get_register_byte( 9), 4, "-", "b")
-            s += " " + getregisterflag(get_register_byte(10), 4, "-", "c")
-            s += " ]"
-
-
             # mixer
             m = get_register_byte(7)
 
@@ -564,6 +728,15 @@ class YmReader(object):
             s += " " + getregisterflag(m,5, "c", "-")
             s += " ]"
             
+
+
+            # envelope
+            s += ", Env ["
+            s += " " + getregisterflag(get_register_byte( 8), 4, "-", "a")
+            s += " " + getregisterflag(get_register_byte( 9), 4, "-", "b")
+            s += " " + getregisterflag(get_register_byte(10), 4, "-", "c")
+            s += " ]"
+
             # Envelope shape
             m = get_register_byte(13)  
 
@@ -574,6 +747,29 @@ class YmReader(object):
             s += " " + getregisterflag(m,1, "----", " ALT")
             s += " " + getregisterflag(m,0, "----", "HOLD")
             s += " ]"
+
+            # Envelope frequency
+            ehz = (float(clock) / (256.0 * float(ym_envelope_f))) * 32.0
+            s += ", Env Freq ["
+            s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
+            s += " ]"
+
+            # Digi drums extended info (not chip-related, YM format only)
+            if dd_on:
+                s += ", Digidrum ["
+                s += " " + str(dd_on)
+                s += " ]"
+
+                # Sample ID is whatever is in the volume register for the channel
+                s += ", Sample ["
+                s += " " +  '{:2d}'.format(get_register_byte(7+dd_on))
+                s += " ]"
+            
+                # Sample freq is whatever is in R14 (not sure what R15 is as DD2)
+                s += ", Sample Freq ["
+                s += " " +  '{:6d}'.format(dd_freq)
+                s += " ]"
+
 
 
             print s  
