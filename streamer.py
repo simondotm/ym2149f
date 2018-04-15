@@ -200,6 +200,11 @@ class YmReader(object):
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
         vgm_stream.extend( struct.pack('B', 128+(2<<5)+16) ) # LATCH VOLUME
 
+        # output periodic noise on channel 3
+        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+        vgm_stream.extend( struct.pack('B', 128 + (3 << 5) + 3) ) # LATCH PERIODIC TONE on channel 3    
+
+
         ym_tone_a_max = 0
         ym_tone_b_max = 0
         ym_tone_c_max = 0
@@ -227,6 +232,8 @@ class YmReader(object):
 
             # return frequency in hz of a given YM tone/noise pitch
             def get_ym_frequency(v):
+                if v < 1:
+                    v = 1
                 return clock / (16 * v)
 
 
@@ -319,6 +326,8 @@ class YmReader(object):
                 vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
                 vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
 
+            
+
             # given a channel and volume value, output vgm command
             def output_sn_volume(channel, volume):
 
@@ -364,83 +373,149 @@ class YmReader(object):
             ym_tone_b_min = min(ym_tone_b_min, ym_tone_b)
             ym_tone_c_min = min(ym_tone_c_min, ym_tone_c)
 
-
+            ym_freq_a = get_ym_frequency(ym_tone_a)
+            ym_freq_b = get_ym_frequency(ym_tone_b)
+            ym_freq_c = get_ym_frequency(ym_tone_c)
+            
 
 
             #------------------------------------------------
             # output VGM SN76489 equivalent data
             #------------------------------------------------
 
-            TEST_BASS = False
-            BASS_CHANNEL = 1
-            FILTER_A = True
-            FILTER_B = False
-            FILTER_C = True
+            if True:
 
-            if TEST_BASS:
-                if BASS_CHANNEL == 0:
-                    temp = ym_volume_a
-                    ym_volume_a = ym_volume_c
-                    ym_volume_c = temp
-                    temp = ym_tone_a
-                    ym_tone_a = ym_tone_c
-                    ym_tone_c = temp
+                lo_count = 0
+                if ym_freq_a < sn_freq_lo:
+                    lo_count += 1
+                if ym_freq_b < sn_freq_lo:
+                    lo_count += 1
+                if ym_freq_c < sn_freq_lo:
+                    lo_count += 1
+                    
+                if lo_count == 0:
+                    # all good, in range, output
+                    output_sn_volume(0, ym_volume_a)
+                    output_sn_volume(1, ym_volume_b)
+                    output_sn_volume(2, ym_volume_c)
+                    output_sn_volume(3, 0)
+
+                    output_sn_tone(0, ym_to_sn(ym_tone_a))
+                    output_sn_tone(1, ym_to_sn(ym_tone_b))
+                    output_sn_tone(2, ym_to_sn(ym_tone_c))
+                else:
+                    print str(lo_count) + " channels out of range"
+                    # mute channel 2
+                    output_sn_volume(2, 0)     
+
+                    channel_map = [0,1,2]
+                    if ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c:
+                        # it's A
+                        channel_map = [2,1,0]
+                        output_sn_volume(0, ym_volume_c)
+                        output_sn_volume(1, ym_volume_b)
+                        output_sn_volume(3, ym_volume_a)
+
+                        output_sn_tone(0, ym_to_sn(ym_tone_c))
+                        output_sn_tone(1, ym_to_sn(ym_tone_b))
+                        output_sn_tone(2, ym_to_sn_periodic(ym_tone_a))                        
+                    else:
+                        if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
+                            # it's B
+                            channel_map = [0,2,1]
+                            output_sn_volume(0, ym_volume_a)
+                            output_sn_volume(1, ym_volume_c)
+                            output_sn_volume(3, ym_volume_b)
+
+                            output_sn_tone(0, ym_to_sn(ym_tone_a))
+                            output_sn_tone(1, ym_to_sn(ym_tone_c))
+                            output_sn_tone(2, ym_to_sn_periodic(ym_tone_b))                              
+                        else:
+                            # it's C    
+                            channel_map = [0,1,2]
+                            output_sn_volume(0, ym_volume_a)
+                            output_sn_volume(1, ym_volume_b)
+                            output_sn_volume(3, ym_volume_c)
+
+                            output_sn_tone(0, ym_to_sn(ym_tone_a))
+                            output_sn_tone(1, ym_to_sn(ym_tone_b))
+                            output_sn_tone(2, ym_to_sn_periodic(ym_tone_c))                                 
+
+                           
+
+
+
+            if False:
+                TEST_BASS = False
+                BASS_CHANNEL = 1
+                FILTER_A = True
+                FILTER_B = False
+                FILTER_C = True
+
+                if TEST_BASS:
+                    if BASS_CHANNEL == 0:
+                        temp = ym_volume_a
+                        ym_volume_a = ym_volume_c
+                        ym_volume_c = temp
+                        temp = ym_tone_a
+                        ym_tone_a = ym_tone_c
+                        ym_tone_c = temp
+                        
+
+                    if BASS_CHANNEL == 1:
+                        temp = ym_volume_b
+                        ym_volume_b = ym_volume_c
+                        ym_volume_c = temp
+                        temp = ym_tone_b
+                        ym_tone_b = ym_tone_c
+                        ym_tone_c = temp
                     
 
-                if BASS_CHANNEL == 1:
-                    temp = ym_volume_b
-                    ym_volume_b = ym_volume_c
-                    ym_volume_c = temp
-                    temp = ym_tone_b
-                    ym_tone_b = ym_tone_c
-                    ym_tone_c = temp
-                
+                # channel A volume -> SN Channel 0
+                if not FILTER_A:
+                    output_sn_volume(0, ym_volume_a)
 
-            # channel A volume -> SN Channel 0
-            if not FILTER_A:
-                output_sn_volume(0, ym_volume_a)
+                # channel B volume -> SN Channel 0
+                if not FILTER_B:
+                    output_sn_volume(1, ym_volume_b)
 
-            # channel B volume -> SN Channel 0
-            if not FILTER_B:
-                output_sn_volume(1, ym_volume_b)
-
-            # channel C volume -> SN Channel 0
-            if not FILTER_C:
-                if TEST_BASS:
-                    output_sn_volume(2, 0)
-                    output_sn_volume(3, ym_volume_c)
-                else:
-                    output_sn_volume(2, ym_volume_c)
-
-
-
-            # channel A -> SN Channel 0
-            if not FILTER_A:
-                if ym_mix_tone_a == 0:
-                    sn_tone = ym_to_sn(ym_tone_a)
-                    output_sn_tone(0, sn_tone)
-
-            # channel B -> SN Channel 1
-            if not FILTER_B:
-                if ym_mix_tone_b == 0:
-                    sn_tone = ym_to_sn(ym_tone_b)
-                    output_sn_tone(1, sn_tone)
-
-            # channel C -> SN Channel 2
-            if not FILTER_C:
-                if ym_mix_tone_c == 0:
+                # channel C volume -> SN Channel 0
+                if not FILTER_C:
                     if TEST_BASS:
-                        print "PERIODIC"
-                        sn_tone = ym_to_sn_periodic(ym_tone_c)
-                        output_sn_tone(2, sn_tone)
-
-                        r_lo = 128 + (3 << 5) + 3
-                        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-                        vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
-
+                        output_sn_volume(2, 0)
+                        output_sn_volume(3, ym_volume_c)
                     else:
-                        sn_tone = ym_to_sn(ym_tone_c)
-                        output_sn_tone(2, sn_tone)
+                        output_sn_volume(2, ym_volume_c)
+
+
+
+                # channel A -> SN Channel 0
+                if not FILTER_A:
+                    if ym_mix_tone_a == 0:
+                        sn_tone = ym_to_sn(ym_tone_a)
+                        output_sn_tone(0, sn_tone)
+
+                # channel B -> SN Channel 1
+                if not FILTER_B:
+                    if ym_mix_tone_b == 0:
+                        sn_tone = ym_to_sn(ym_tone_b)
+                        output_sn_tone(1, sn_tone)
+
+                # channel C -> SN Channel 2
+                if not FILTER_C:
+                    if ym_mix_tone_c == 0:
+                        if TEST_BASS:
+                            print "PERIODIC"
+                            sn_tone = ym_to_sn_periodic(ym_tone_c)
+                            output_sn_tone(2, sn_tone)
+
+                            r_lo = 128 + (3 << 5) + 3
+                            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+                            vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
+
+                        else:
+                            sn_tone = ym_to_sn(ym_tone_c)
+                            output_sn_tone(2, sn_tone)
 
             #------------------------------------------------
             # show info
