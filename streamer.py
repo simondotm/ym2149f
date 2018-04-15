@@ -645,6 +645,15 @@ class YmReader(object):
                 output_sn_tone(2, sn_tone_latch[2])
                 #output_sn_tone(3, sn_tone_latch[i])
 
+                # Apply mixer settings (will mute channels when non-zero)
+                if ym_mix_tone_a:
+                    sn_attn_latch[0] = 0
+                if ym_mix_tone_b:
+                    sn_attn_latch[1] = 0
+                if ym_mix_tone_c:
+                    sn_attn_latch[2] = 0
+                    
+
                 output_sn_volume(0, sn_attn_latch[0])
                 output_sn_volume(1, sn_attn_latch[1])
                 output_sn_volume(2, sn_attn_latch[2])
