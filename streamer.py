@@ -164,26 +164,26 @@ class YmReader(object):
 
         self.__parse_extra_infos()
 
-        print "file offset="
-        print self.__fd.tell()  
+        #print "file offset="
+        #print self.__fd.tell()  
         #       self.dump_header()
 
 
 
     def __read_data_interleaved(self):
-        print "__read_data_interleaved"
-        print "file offset=" + str(self.__fd.tell())  
+        #print "__read_data_interleaved"
+        #print "file offset=" + str(self.__fd.tell())  
        
         cnt  = self.__header['nb_frames']
         #regs = [self.__fd.read(cnt) for i in xrange(16)]
         regs = []
         for i in xrange(16):
-            print "file offset=" + str(self.__fd.tell())  
+            #print "file offset=" + str(self.__fd.tell())  
             regs.append(self.__fd.read(cnt))
 
-        print len(regs)
+        print " Loaded " + str(len(regs)) + " register data chunks"
         for r in xrange(16):
-            print "Register " + str(r) + " entries = " + str(len(regs[r]))
+            print " Register " + str(r) + " entries = " + str(len(regs[r]))
 
         #self.__data=[''.join(f) for f in zip(*regs)]
         self.__data = regs
@@ -195,9 +195,9 @@ class YmReader(object):
         if not self.__header['interleaved']:
             raise Exception(
                 'Unsupported file format: Only interleaved data are supported')
-        print "file offset=" + str(self.__fd.tell())  
+        #print "file offset=" + str(self.__fd.tell())  
         self.__read_data_interleaved()
-        print "file offset=" + str(self.__fd.tell())  
+        #print "file offset=" + str(self.__fd.tell())  
 
     def __check_eof(self):
         if self.__fd.read(4) != 'End!':
@@ -272,19 +272,21 @@ class YmReader(object):
         print get_register_data(0,0)
         print get_register_data(1,0)
 
-        # default volumes
+        # set default full volumes at the start of the tune for all channels
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
         vgm_stream.extend( struct.pack('B', 128+(0<<5)+16) ) # LATCH VOLUME
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
         vgm_stream.extend( struct.pack('B', 128+(1<<5)+16) ) # LATCH VOLUME
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
         vgm_stream.extend( struct.pack('B', 128+(2<<5)+16) ) # LATCH VOLUME
+        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+        vgm_stream.extend( struct.pack('B', 128+(3<<5)+16+15) ) # LATCH VOLUME to SILENT
 
-        # output periodic noise on channel 3
+        # set periodic noise on channel 3
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
         vgm_stream.extend( struct.pack('B', 128 + (3 << 5) + 3) ) # LATCH PERIODIC TONE on channel 3    
 
-
+        # stats for tracking frequency ranges within music
         ym_tone_a_max = 0
         ym_tone_b_max = 0
         ym_tone_c_max = 0
@@ -293,6 +295,14 @@ class YmReader(object):
         ym_tone_b_min = 65536
         ym_tone_c_min = 65536
         
+        # range of digidrum playback frequencies
+        ym_dd_freq_min = 65536
+        ym_dd_freq_max = 0        
+
+        # range of envelope frequencies
+        ym_env_freq_min = 65536
+        ym_env_freq_max = 0        
+
 
         # my dump code
         for i in xrange(cnt):
@@ -508,13 +518,19 @@ class YmReader(object):
 
             MFP_FREQ = 2457600
             MFP_TABLE = [ 1, 4, 10, 16, 50, 64, 100, 200]
+
+            # Handle DD frequency
             dd_freq = 0
             if dd_on:
-                print "dd_tp=" + str(dd_tp)
-                print "dd_tc=" + str(dd_tc)
-                
-                dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
+                print " dd_tp=" + str(dd_tp)
+                print " dd_tc=" + str(dd_tc)
 
+                if dd_tc == 0:
+                    print "ERROR: Digidrum TC value is 0 - unexpected & unhandled"
+                else:             
+                    dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
+
+            # Handle TS frequency
             ts_freq = 0
             if ts_on:
                 if ts_tc == 0:
@@ -754,6 +770,10 @@ class YmReader(object):
             s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
             s += " ]"
 
+            ym_env_freq_min = min(ym_env_freq_min, ehz)
+            ym_env_freq_max = max(ym_env_freq_max, ehz)
+
+
             # Digi drums extended info (not chip-related, YM format only)
             if dd_on:
                 s += ", Digidrum ["
@@ -770,7 +790,8 @@ class YmReader(object):
                 s += " " +  '{:6d}'.format(dd_freq)
                 s += " ]"
 
-
+                ym_dd_freq_min = min(ym_dd_freq_min, dd_freq)
+                ym_dd_freq_max = max(ym_dd_freq_max, dd_freq)
 
             print s  
 
@@ -780,10 +801,15 @@ class YmReader(object):
         #--------------------------------------------
         # Information
         #--------------------------------------------
-        print "Channel A - " + str( get_ym_frequency(ym_tone_a_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_a_min) ) + "Hz"
-        print "Channel B - " + str( get_ym_frequency(ym_tone_b_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_b_min) ) + "Hz"
-        print "Channel C - " + str( get_ym_frequency(ym_tone_c_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_c_min) ) + "Hz"
-        
+        print ""
+        print "Info:"
+        print " Channel A Hz range - " + str( get_ym_frequency(ym_tone_a_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_a_min) ) + "Hz"
+        print " Channel B Hz range - " + str( get_ym_frequency(ym_tone_b_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_b_min) ) + "Hz"
+        print " Channel C Hz range - " + str( get_ym_frequency(ym_tone_c_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_c_min) ) + "Hz"
+        print "  Digidrum Hz range - " + str( ym_dd_freq_min ) + "Hz to " + str( ym_dd_freq_max ) + "Hz"
+        print "  Envelope Hz range - " + str( ym_env_freq_min ) + "Hz to " + str( ym_env_freq_max ) + "Hz"
+
+
         #--------------------------------------------
         # Output the VGM
         #--------------------------------------------
