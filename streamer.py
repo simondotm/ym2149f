@@ -570,6 +570,9 @@ class YmReader(object):
             # output VGM SN76489 equivalent data
             #------------------------------------------------
 
+            sn_attn_latch = [0, 0, 0, 0]
+            sn_tone_latch = [0, 0, 0, 0]
+
             if True:
 
                 lo_count = 0
@@ -582,54 +585,70 @@ class YmReader(object):
                     
                 if lo_count == 0:
                     # all good, in range, output
-                    output_sn_volume(0, ym_volume_a)
-                    output_sn_volume(1, ym_volume_b)
-                    output_sn_volume(2, ym_volume_c)
-                    output_sn_volume(3, 0)
+                    sn_attn_latch[0] = ym_volume_a
+                    sn_attn_latch[1] = ym_volume_b
+                    sn_attn_latch[2] = ym_volume_c
+                    sn_attn_latch[3] = 0
 
-                    output_sn_tone(0, ym_to_sn(ym_tone_a))
-                    output_sn_tone(1, ym_to_sn(ym_tone_b))
-                    output_sn_tone(2, ym_to_sn(ym_tone_c))
+                    sn_tone_latch[0] = ym_to_sn(ym_tone_a)
+                    sn_tone_latch[1] = ym_to_sn(ym_tone_b)
+                    sn_tone_latch[2] = ym_to_sn(ym_tone_c)
+                    
                 else:
                     print " " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
                     # mute channel 2
-                    output_sn_volume(2, 0)     
+                    sn_attn_latch[2] = 0
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
                     if ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c:
                         # it's A
                         print " Channel A -> Bass "                     
-                        output_sn_volume(0, ym_volume_c)
-                        output_sn_volume(1, ym_volume_b)
-                        output_sn_volume(3, ym_volume_a)
 
-                        output_sn_tone(0, ym_to_sn(ym_tone_c))
-                        output_sn_tone(1, ym_to_sn(ym_tone_b))
-                        output_sn_tone(2, ym_to_sn(ym_tone_a, True))   
+                        sn_attn_latch[0] = ym_volume_c
+                        sn_attn_latch[1] = ym_volume_b
+                        sn_attn_latch[3] = ym_volume_a
+
+                        sn_tone_latch[0] = ym_to_sn(ym_tone_c)
+                        sn_tone_latch[1] = ym_to_sn(ym_tone_b)
+                        sn_tone_latch[2] = ym_to_sn(ym_tone_a, True)
+
                     else:
                         if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
                             # it's B
                             print " Channel B -> Bass "                     
-                            output_sn_volume(0, ym_volume_a)
-                            output_sn_volume(1, ym_volume_c)
-                            output_sn_volume(3, ym_volume_b)
 
-                            output_sn_tone(0, ym_to_sn(ym_tone_a))
-                            output_sn_tone(1, ym_to_sn(ym_tone_c))
-                            output_sn_tone(2, ym_to_sn(ym_tone_b, True))                              
+                            sn_attn_latch[0] = ym_volume_a
+                            sn_attn_latch[1] = ym_volume_c
+                            sn_attn_latch[3] = ym_volume_b
+
+                            sn_tone_latch[0] = ym_to_sn(ym_tone_a)
+                            sn_tone_latch[1] = ym_to_sn(ym_tone_c)
+                            sn_tone_latch[2] = ym_to_sn(ym_tone_b, True)
+
                         else:
                             # it's C    
                             print " Channel C -> Bass "                     
-                            output_sn_volume(0, ym_volume_a)
-                            output_sn_volume(1, ym_volume_b)
-                            output_sn_volume(3, ym_volume_c)
 
-                            output_sn_tone(0, ym_to_sn(ym_tone_a))
-                            output_sn_tone(1, ym_to_sn(ym_tone_b))
-                            output_sn_tone(2, ym_to_sn(ym_tone_c, True))                                 
+                            sn_attn_latch[0] = ym_volume_a
+                            sn_attn_latch[1] = ym_volume_b
+                            sn_attn_latch[3] = ym_volume_c
+
+                            sn_tone_latch[0] = ym_to_sn(ym_tone_a)
+                            sn_tone_latch[1] = ym_to_sn(ym_tone_b)
+                            sn_tone_latch[2] = ym_to_sn(ym_tone_c, True)
 
                            
+                # output the final data to VGM
+                output_sn_tone(0, sn_tone_latch[0])
+                output_sn_tone(1, sn_tone_latch[1])
+                output_sn_tone(2, sn_tone_latch[2])
+                #output_sn_tone(3, sn_tone_latch[i])
+
+                output_sn_volume(0, sn_attn_latch[0])
+                output_sn_volume(1, sn_attn_latch[1])
+                output_sn_volume(2, sn_attn_latch[2])
+                output_sn_volume(3, sn_attn_latch[3])
 
 
 
