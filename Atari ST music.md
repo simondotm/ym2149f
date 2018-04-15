@@ -75,3 +75,37 @@ https://bulba.untergrund.net/emulator_e.htm
 
 YM Freq table
 http://poi.ribbon.free.fr/tmp/freq2regs.htm
+
+
+NEO geo emu of YM
+http://jiggawatt.org/badc0de/nymp.html
+
+Source for YM emulation
+http://sid.ethz.ch/debian/xmp/xmp-3.5.0/src/player/
+
+YM format & Digidrums
+ftp://ftp.modland.com/pub/documents/format_documentation/Atari%20ST%20Sound%20Chip%20Emulator%20YM1-6%20(.ay,%20.ym).txt
+
+YM2149 Arduino project
+http://www.florentflament.com/blog/playing-sndh-on-ym2149.html
+
+http://sndh.atari.org/players.php
+http://sndh.atari.org/fileformat.php
+http://atari.h2nob.de/menus.php?search=crikey_there_are_no_sheep
+
+C64 AY emu
+https://www.youtube.com/watch?v=FWacH1rwzio
+https://en.wikipedia.org/wiki/General_Instrument_AY-3-8910
+
+
+If pigs could fly
+https://www.youtube.com/watch?v=sUuKK0TcKbE
+http://www.vintageisthenewold.com/sndh-atari-st-ym2149-archive-v4-7-released/
+http://www.tphf.karoo.net/download.htm
+
+How to rip ST snd to sndh
+http://www.atari-forum.com/viewtopic.php?t=22182
+
+
+CPC logons run
+https://www.youtube.com/watch?v=22wSm4y27Wk
