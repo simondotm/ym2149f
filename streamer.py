@@ -446,6 +446,15 @@ class YmReader(object):
                 vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
                 vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
 
+
+
+            # output a noise tone on channel 3
+            def output_sn_noise(tone):
+
+                r_lo = 128 + (3 << 5) + (tone & 15)
+
+                vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+                vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
             
 
             # given a channel and volume value, output vgm command
@@ -542,15 +551,16 @@ class YmReader(object):
             # should be interpreted as a 5-bit sample number rather than a volume
 
 
-            # output is on when mix bit is clear
+            # output is on when mix bit is clear. 
+            # we invert it though for easier code readibility 
             ym_mixer = get_register_byte(7)
-            ym_mix_tone_a = ym_mixer & (1<<0)
-            ym_mix_tone_b = ym_mixer & (1<<1)
-            ym_mix_tone_c = ym_mixer & (1<<2)
+            ym_mix_tone_a = (ym_mixer & (1<<0)) == 0
+            ym_mix_tone_b = (ym_mixer & (1<<1)) == 0
+            ym_mix_tone_c = (ym_mixer & (1<<2)) == 0
 
-            ym_mix_noise_a = ym_mixer & (1<<3)
-            ym_mix_noise_b = ym_mixer & (1<<4)
-            ym_mix_noise_c = ym_mixer & (1<<5)
+            ym_mix_noise_a = (ym_mixer & (1<<3)) == 0
+            ym_mix_noise_b = (ym_mixer & (1<<4)) == 0
+            ym_mix_noise_c = (ym_mixer & (1<<5)) == 0
 
             # calculate some additional variables
             ym_tone_a_max = max(ym_tone_a_max, ym_tone_a)
@@ -573,7 +583,18 @@ class YmReader(object):
             sn_attn_latch = [0, 0, 0, 0]
             sn_tone_latch = [0, 0, 0, 0]
 
-            if True:
+            # load the current tones & volumes
+            sn_attn_latch[0] = ym_volume_a
+            sn_attn_latch[1] = ym_volume_b
+            sn_attn_latch[2] = ym_volume_c
+            sn_attn_latch[3] = 0
+
+            sn_tone_latch[0] = ym_to_sn(ym_tone_a)
+            sn_tone_latch[1] = ym_to_sn(ym_tone_b)
+            sn_tone_latch[2] = ym_to_sn(ym_tone_c)
+
+            ENABLE_BASS_TONES = False
+            if ENABLE_BASS_TONES:
 
                 lo_count = 0
                 if ym_freq_a < sn_freq_lo:
@@ -583,18 +604,9 @@ class YmReader(object):
                 if ym_freq_c < sn_freq_lo:
                     lo_count += 1
                     
-                if lo_count == 0:
-                    # all good, in range, output
-                    sn_attn_latch[0] = ym_volume_a
-                    sn_attn_latch[1] = ym_volume_b
-                    sn_attn_latch[2] = ym_volume_c
-                    sn_attn_latch[3] = 0
-
-                    sn_tone_latch[0] = ym_to_sn(ym_tone_a)
-                    sn_tone_latch[1] = ym_to_sn(ym_tone_b)
-                    sn_tone_latch[2] = ym_to_sn(ym_tone_c)
-                    
-                else:
+                # if at least one channel is an out of range frequency
+                # adjust for periodic noise bass
+                if lo_count:
                     print " " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
                     # mute channel 2
                     sn_attn_latch[2] = 0
@@ -639,25 +651,53 @@ class YmReader(object):
                             sn_tone_latch[2] = ym_to_sn(ym_tone_c, True)
 
                            
-                # output the final data to VGM
-                output_sn_tone(0, sn_tone_latch[0])
-                output_sn_tone(1, sn_tone_latch[1])
-                output_sn_tone(2, sn_tone_latch[2])
-                #output_sn_tone(3, sn_tone_latch[i])
 
-                # Apply mixer settings (will mute channels when non-zero)
-                if ym_mix_tone_a:
-                    sn_attn_latch[0] = 0
-                if ym_mix_tone_b:
-                    sn_attn_latch[1] = 0
-                if ym_mix_tone_c:
-                    sn_attn_latch[2] = 0
-                    
+            # Apply mixer settings (will mute channels when non-zero)
+            # TODO: rename _mix_ to _mute_
+            if not ym_mix_tone_a:
+                sn_attn_latch[0] = 0
+            if not ym_mix_tone_b:
+                sn_attn_latch[1] = 0
+            if not ym_mix_tone_c:
+                sn_attn_latch[2] = 0
+                
+            # handle noise. this will be interesting!
+            if ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c:
 
-                output_sn_volume(0, sn_attn_latch[0])
-                output_sn_volume(1, sn_attn_latch[1])
-                output_sn_volume(2, sn_attn_latch[2])
-                output_sn_volume(3, sn_attn_latch[3])
+                noise_volume = 0
+                noise_active = 0
+                if ym_mix_noise_a: # and not ym_mix_tone_a:
+                    noise_volume += ym_volume_a
+                    noise_active += 1
+                if ym_mix_noise_b: # and not ym_mix_tone_b:
+                    noise_volume += ym_volume_b
+                    noise_active += 1
+                if ym_mix_noise_c: # and not ym_mix_tone_c:
+                    noise_volume += ym_volume_c
+                    noise_active += 1
+
+                # average the volume based on number of active noise channels
+                noise_volume /= noise_active
+
+                print "OUTPUT NOISE! " + str(noise_volume)
+
+                sn_attn_latch[3] = noise_volume
+                sn_tone_latch[3] = 4 # White noise
+            else:
+                if ENABLE_BASS_TONES:
+                    sn_tone_latch[3] = 3 # Periodic noise
+                
+
+            # output the final data to VGM
+            output_sn_tone(0, sn_tone_latch[0])
+            output_sn_tone(1, sn_tone_latch[1])
+            output_sn_tone(2, sn_tone_latch[2])
+            output_sn_noise(sn_tone_latch[3])
+
+            output_sn_volume(0, sn_attn_latch[0])
+            output_sn_volume(1, sn_attn_latch[1])
+            output_sn_volume(2, sn_attn_latch[2])
+            output_sn_volume(3, sn_attn_latch[3])
 
 
 
@@ -793,7 +833,13 @@ class YmReader(object):
             s += " ]"
 
             # Envelope frequency
-            ehz = (float(clock) / (256.0 * float(ym_envelope_f))) * 32.0
+            if ym_envelope_f == 0:
+                #print "WARNING: Envelope frequency is 0 - unexpected & unhandled"
+                # It's ok, happens when no envelope being used
+                ehz = 0
+            else:
+                ehz = (float(clock) / (256.0 * float(ym_envelope_f))) * 32.0
+            
             s += ", Env Freq ["
             s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
             s += " ]"
