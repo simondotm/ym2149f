@@ -308,6 +308,9 @@ class YmReader(object):
         ym_env_freq_max = 0        
 
 
+        sn_attn_latch = [ -1, -1, -1, -1 ]
+        sn_tone_latch = [ -1, -1, -1, -1 ]
+
         # my dump code
         for i in xrange(cnt):
             s = "Frame="+'{:05d}'.format(i)+" "
@@ -584,20 +587,20 @@ class YmReader(object):
             # output VGM SN76489 equivalent data
             #------------------------------------------------
 
-            sn_attn_latch = [0, 0, 0, 0]
-            sn_tone_latch = [0, 0, 0, 0]
+            sn_attn_out = [0, 0, 0, 0]
+            sn_tone_out = [0, 0, 0, 0]
 
             # load the current tones & volumes
-            sn_attn_latch[0] = ym_volume_a
-            sn_attn_latch[1] = ym_volume_b
-            sn_attn_latch[2] = ym_volume_c
-            sn_attn_latch[3] = 0
+            sn_attn_out[0] = ym_volume_a
+            sn_attn_out[1] = ym_volume_b
+            sn_attn_out[2] = ym_volume_c
+            sn_attn_out[3] = 0
 
-            sn_tone_latch[0] = ym_to_sn(ym_tone_a)
-            sn_tone_latch[1] = ym_to_sn(ym_tone_b)
-            sn_tone_latch[2] = ym_to_sn(ym_tone_c)
+            sn_tone_out[0] = ym_to_sn(ym_tone_a)
+            sn_tone_out[1] = ym_to_sn(ym_tone_b)
+            sn_tone_out[2] = ym_to_sn(ym_tone_c)
 
-            ENABLE_BASS_TONES = False
+            ENABLE_BASS_TONES = True
             if ENABLE_BASS_TONES:
 
                 lo_count = 0
@@ -613,7 +616,7 @@ class YmReader(object):
                 if lo_count:
                     print " " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
                     # mute channel 2
-                    sn_attn_latch[2] = 0
+                    sn_attn_out[2] = 0
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
@@ -621,52 +624,53 @@ class YmReader(object):
                         # it's A
                         print " Channel A -> Bass "                     
 
-                        sn_attn_latch[0] = ym_volume_c
-                        sn_attn_latch[1] = ym_volume_b
-                        sn_attn_latch[3] = ym_volume_a
+                        sn_attn_out[0] = ym_volume_c
+                        sn_attn_out[1] = ym_volume_b
+                        sn_attn_out[3] = ym_volume_a
 
-                        sn_tone_latch[0] = ym_to_sn(ym_tone_c)
-                        sn_tone_latch[1] = ym_to_sn(ym_tone_b)
-                        sn_tone_latch[2] = ym_to_sn(ym_tone_a, True)
+                        sn_tone_out[0] = ym_to_sn(ym_tone_c)
+                        sn_tone_out[1] = ym_to_sn(ym_tone_b)
+                        sn_tone_out[2] = ym_to_sn(ym_tone_a, True)
 
                     else:
                         if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
                             # it's B
                             print " Channel B -> Bass "                     
 
-                            sn_attn_latch[0] = ym_volume_a
-                            sn_attn_latch[1] = ym_volume_c
-                            sn_attn_latch[3] = ym_volume_b
+                            sn_attn_out[0] = ym_volume_a
+                            sn_attn_out[1] = ym_volume_c
+                            sn_attn_out[3] = ym_volume_b
 
-                            sn_tone_latch[0] = ym_to_sn(ym_tone_a)
-                            sn_tone_latch[1] = ym_to_sn(ym_tone_c)
-                            sn_tone_latch[2] = ym_to_sn(ym_tone_b, True)
+                            sn_tone_out[0] = ym_to_sn(ym_tone_a)
+                            sn_tone_out[1] = ym_to_sn(ym_tone_c)
+                            sn_tone_out[2] = ym_to_sn(ym_tone_b, True)
 
                         else:
                             # it's C    
                             print " Channel C -> Bass "                     
 
-                            sn_attn_latch[0] = ym_volume_a
-                            sn_attn_latch[1] = ym_volume_b
-                            sn_attn_latch[3] = ym_volume_c
+                            sn_attn_out[0] = ym_volume_a
+                            sn_attn_out[1] = ym_volume_b
+                            sn_attn_out[3] = ym_volume_c
 
-                            sn_tone_latch[0] = ym_to_sn(ym_tone_a)
-                            sn_tone_latch[1] = ym_to_sn(ym_tone_b)
-                            sn_tone_latch[2] = ym_to_sn(ym_tone_c, True)
+                            sn_tone_out[0] = ym_to_sn(ym_tone_a)
+                            sn_tone_out[1] = ym_to_sn(ym_tone_b)
+                            sn_tone_out[2] = ym_to_sn(ym_tone_c, True)
 
                            
 
             # Apply mixer settings (will mute channels when non-zero)
             # TODO: rename _mix_ to _mute_
             if not ym_mix_tone_a:
-                sn_attn_latch[0] = 0
+                sn_attn_out[0] = 0
             if not ym_mix_tone_b:
-                sn_attn_latch[1] = 0
+                sn_attn_out[1] = 0
             if not ym_mix_tone_c:
-                sn_attn_latch[2] = 0
+                sn_attn_out[2] = 0
                 
             # handle noise. this will be interesting!
-
+            # noise output will override any bass tones
+            # TODO: detect if bass tone playing as well, and dont do bass adjustment if so
 
 
             # first, determine which channels have the noise mixer enabled
@@ -719,24 +723,50 @@ class YmReader(object):
 
                 print "OUTPUT NOISE! " + str(noise_volume)
 
-                sn_attn_latch[3] = noise_volume
-                sn_tone_latch[3] = 4 # White noise, fixed low frequency (16 cycle)
+                sn_attn_out[3] = noise_volume
+                sn_tone_out[3] = 4 # White noise, fixed low frequency (16 cycle)
                 # most tunes dont seem to change the noise frequency much
             else:
                 if ENABLE_BASS_TONES:
-                    sn_tone_latch[3] = 3 # Periodic noise
+                    sn_tone_out[3] = 3 # Periodic noise
                 
 
             # output the final data to VGM
-            output_sn_tone(0, sn_tone_latch[0])
-            output_sn_tone(1, sn_tone_latch[1])
-            output_sn_tone(2, sn_tone_latch[2])
-            output_sn_noise(sn_tone_latch[3])
+            if sn_tone_out[0] != sn_tone_latch[0]:
+                sn_tone_latch[0] = sn_tone_out[0]
+                output_sn_tone(0, sn_tone_latch[0])
 
-            output_sn_volume(0, sn_attn_latch[0])
-            output_sn_volume(1, sn_attn_latch[1])
-            output_sn_volume(2, sn_attn_latch[2])
-            output_sn_volume(3, sn_attn_latch[3])
+            if sn_tone_out[1] != sn_tone_latch[1]:
+                sn_tone_latch[1] = sn_tone_out[1]              
+                output_sn_tone(1, sn_tone_latch[1])
+
+            if sn_tone_out[2] != sn_tone_latch[2]:
+                sn_tone_latch[2] = sn_tone_out[2]              
+                output_sn_tone(2, sn_tone_latch[2])
+
+            # for the noise channel, only output register writes
+            # if the noise tone has changed, so that we dont unnecessarily
+            # reset the LSFR
+            if sn_tone_out[3] != sn_tone_latch[3]:
+                sn_tone_latch[3] = sn_tone_out[3]
+                output_sn_noise(sn_tone_latch[3])
+
+            # volumes
+            if sn_attn_out[0] != sn_attn_latch[0]:
+                sn_attn_latch[0] = sn_attn_out[0]              
+                output_sn_volume(0, sn_attn_latch[0])
+
+            if sn_attn_out[1] != sn_attn_latch[1]:
+                sn_attn_latch[1] = sn_attn_out[1]              
+                output_sn_volume(1, sn_attn_latch[1])
+
+            if sn_attn_out[2] != sn_attn_latch[2]:
+                sn_attn_latch[2] = sn_attn_out[2]              
+                output_sn_volume(2, sn_attn_latch[2])
+
+            if sn_attn_out[3] != sn_attn_latch[3]:
+                sn_attn_latch[3] = sn_attn_out[3]              
+                output_sn_volume(3, sn_attn_latch[3])
 
 
 
