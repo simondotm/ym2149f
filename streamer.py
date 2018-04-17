@@ -294,6 +294,10 @@ class YmReader(object):
         ym_tone_a_min = 65536
         ym_tone_b_min = 65536
         ym_tone_c_min = 65536
+
+        # range of noise frequencies
+        ym_noise_max = 0
+        ym_noise_min = 63356
         
         # range of digidrum playback frequencies
         ym_dd_freq_min = 65536
@@ -662,7 +666,41 @@ class YmReader(object):
                 sn_attn_latch[2] = 0
                 
             # handle noise. this will be interesting!
+
+
+
+            # first, determine which channels have the noise mixer enabled
+            # the calculate a volume which is the average level
             if ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c:
+
+                noise_freq = 0
+                if ym_noise == 0:
+                    print "ERROR: Noise is enabled at frequency 0 - unexpected"
+                else:
+                    noise_freq = float(clock) / (16.0 * ym_noise)
+
+                    ym_noise_min = min(ym_noise, ym_noise_min)
+                    ym_noise_max = max(ym_noise, ym_noise_max)
+
+                #snf = float(vgm_clock) / (16.0 * ym_noise)
+                #print "noise_freq=" + str(noise_freq) + "Hz"
+                #print "SN 0 = " + str(float(vgm_clock) / (16.0 * 16.0))
+                #print "SN 1 = " + str(float(vgm_clock) / (16.0 * 32.0))
+                #print "SN 2 = " + str(float(vgm_clock) / (16.0 * 64.0))
+                
+                # SN internal clock is 1/16 of external clock
+                # white noise on the SN has 4 frequencies
+                # 0 - clock/512  (7812) 32Hz (emit random output every 16 cycles)
+                # 1 - clock/1024 (3906) 21Hz (emit random output every 32 cycles)
+                # 2 - clock/2048 (1953) 18Hz (emit random output every 64 cycles)
+                # 3 - tone 2 frequency
+                # The SN uses the counter as usual,
+
+                # for noise we are looking at the duty cycle rate that
+                # the output is pulsed - this is the same as the YM chip:
+                # clock / 16N
+
+
 
                 noise_volume = 0
                 noise_active = 0
@@ -682,7 +720,8 @@ class YmReader(object):
                 print "OUTPUT NOISE! " + str(noise_volume)
 
                 sn_attn_latch[3] = noise_volume
-                sn_tone_latch[3] = 4 # White noise
+                sn_tone_latch[3] = 4 # White noise, fixed low frequency (16 cycle)
+                # most tunes dont seem to change the noise frequency much
             else:
                 if ENABLE_BASS_TONES:
                     sn_tone_latch[3] = 3 # Periodic noise
@@ -882,6 +921,7 @@ class YmReader(object):
         print " Channel C Hz range - " + str( get_ym_frequency(ym_tone_c_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_c_min) ) + "Hz"
         print "  Digidrum Hz range - " + str( ym_dd_freq_min ) + "Hz to " + str( ym_dd_freq_max ) + "Hz"
         print "  Envelope Hz range - " + str( ym_env_freq_min ) + "Hz to " + str( ym_env_freq_max ) + "Hz"
+        print "        Noise range - " + str( ym_noise_min ) + " to " + str( ym_noise_max ) + " "
 
 
         #--------------------------------------------
