@@ -600,8 +600,30 @@ class YmReader(object):
             sn_tone_out[1] = ym_to_sn(ym_tone_b)
             sn_tone_out[2] = ym_to_sn(ym_tone_c)
 
+            # first, determine which channels have the noise mixer enabled
+            # the calculate a volume which is the average level
+            noise_volume = 0
+            noise_active = 0
+            if ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c:
+
+                if ym_mix_noise_a: # and not ym_mix_tone_a:
+                    noise_volume += ym_volume_a
+                    noise_active += 1
+                if ym_mix_noise_b: # and not ym_mix_tone_b:
+                    noise_volume += ym_volume_b
+                    noise_active += 1
+                if ym_mix_noise_c: # and not ym_mix_tone_c:
+                    noise_volume += ym_volume_c
+                    noise_active += 1
+
+                # average the volume based on number of active noise channels
+                noise_volume /= noise_active
+
+                print "OUTPUT NOISE! " + str(noise_volume)            
+
             ENABLE_BASS_TONES = True
-            if ENABLE_BASS_TONES:
+            bass_active = False
+            if ENABLE_BASS_TONES and not noise_active:
 
                 lo_count = 0
                 if ym_freq_a < sn_freq_lo:
@@ -614,6 +636,7 @@ class YmReader(object):
                 # if at least one channel is an out of range frequency
                 # adjust for periodic noise bass
                 if lo_count:
+                    bass_active = True
                     print " " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
                     # mute channel 2
                     sn_attn_out[2] = 0
@@ -673,10 +696,10 @@ class YmReader(object):
             # TODO: detect if bass tone playing as well, and dont do bass adjustment if so
 
 
-            # first, determine which channels have the noise mixer enabled
-            # the calculate a volume which is the average level
-            if ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c:
 
+
+
+            if noise_active:
                 noise_freq = 0
                 if ym_noise == 0:
                     print "ERROR: Noise is enabled at frequency 0 - unexpected"
@@ -704,31 +727,15 @@ class YmReader(object):
                 # the output is pulsed - this is the same as the YM chip:
                 # clock / 16N
 
-
-
-                noise_volume = 0
-                noise_active = 0
-                if ym_mix_noise_a: # and not ym_mix_tone_a:
-                    noise_volume += ym_volume_a
-                    noise_active += 1
-                if ym_mix_noise_b: # and not ym_mix_tone_b:
-                    noise_volume += ym_volume_b
-                    noise_active += 1
-                if ym_mix_noise_c: # and not ym_mix_tone_c:
-                    noise_volume += ym_volume_c
-                    noise_active += 1
-
-                # average the volume based on number of active noise channels
-                noise_volume /= noise_active
-
-                print "OUTPUT NOISE! " + str(noise_volume)
-
                 sn_attn_out[3] = noise_volume
                 sn_tone_out[3] = 4 # White noise, fixed low frequency (16 cycle)
                 # most tunes dont seem to change the noise frequency much
             else:
-                if ENABLE_BASS_TONES:
+                if bass_active:
+                    sn_attn_out[2] = 0 # turn off tone2
                     sn_tone_out[3] = 3 # Periodic noise
+                else:
+                    sn_attn_out[3] = 0 # turn off noise
                 
 
             # output the final data to VGM
@@ -769,78 +776,6 @@ class YmReader(object):
                 output_sn_volume(3, sn_attn_latch[3])
 
 
-
-            if False:
-                TEST_BASS = False
-                BASS_CHANNEL = 1
-                FILTER_A = True
-                FILTER_B = False
-                FILTER_C = True
-
-                if TEST_BASS:
-                    if BASS_CHANNEL == 0:
-                        temp = ym_volume_a
-                        ym_volume_a = ym_volume_c
-                        ym_volume_c = temp
-                        temp = ym_tone_a
-                        ym_tone_a = ym_tone_c
-                        ym_tone_c = temp
-                        
-
-                    if BASS_CHANNEL == 1:
-                        temp = ym_volume_b
-                        ym_volume_b = ym_volume_c
-                        ym_volume_c = temp
-                        temp = ym_tone_b
-                        ym_tone_b = ym_tone_c
-                        ym_tone_c = temp
-                    
-
-                # channel A volume -> SN Channel 0
-                if not FILTER_A:
-                    output_sn_volume(0, ym_volume_a)
-
-                # channel B volume -> SN Channel 0
-                if not FILTER_B:
-                    output_sn_volume(1, ym_volume_b)
-
-                # channel C volume -> SN Channel 0
-                if not FILTER_C:
-                    if TEST_BASS:
-                        output_sn_volume(2, 0)
-                        output_sn_volume(3, ym_volume_c)
-                    else:
-                        output_sn_volume(2, ym_volume_c)
-
-
-
-                # channel A -> SN Channel 0
-                if not FILTER_A:
-                    if ym_mix_tone_a == 0:
-                        sn_tone = ym_to_sn(ym_tone_a)
-                        output_sn_tone(0, sn_tone)
-
-                # channel B -> SN Channel 1
-                if not FILTER_B:
-                    if ym_mix_tone_b == 0:
-                        sn_tone = ym_to_sn(ym_tone_b)
-                        output_sn_tone(1, sn_tone)
-
-                # channel C -> SN Channel 2
-                if not FILTER_C:
-                    if ym_mix_tone_c == 0:
-                        if TEST_BASS:
-                            print "PERIODIC"
-                            sn_tone = ym_to_sn_periodic(ym_tone_c)
-                            output_sn_tone(2, sn_tone)
-
-                            r_lo = 128 + (3 << 5) + 3
-                            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-                            vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
-
-                        else:
-                            sn_tone = ym_to_sn(ym_tone_c)
-                            output_sn_tone(2, sn_tone)
 
             #------------------------------------------------
             # show info
