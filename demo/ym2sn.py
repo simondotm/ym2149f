@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-# YM file format parser
+# YM file format parser, and conversion routines for SN sound chip VGM files
+# https://github.com/simondotm/ym2149f
 # based on original code from https://github.com/FlorentFlament/ym2149-streamer
 
 import functools
