@@ -114,7 +114,11 @@ So that pretty much sums it up. I was actually quite surprised how well the resu
 
 See [SMS Power](http://www.smspower.org/Development/SN76489) for some great technical info about the SN76489 PSG.
 
-Chip manufacturer data sheets are also very useful references. 
+Chip manufacturer data sheets are also very useful references:
+* [SN76489](https://github.com/simondotm/ym2149f/blob/master/doc/SN76489.pdf)
+* [YM2149](https://github.com/simondotm/ym2149f/blob/master/doc/ym2149_DS.pdf)
+
+Other resources relating to [Atari ST music](Resources.md).
 
 
 
