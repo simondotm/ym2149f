@@ -245,6 +245,9 @@ class YmReader(object):
         vgm_time = 0
         vgm_clock = 4000000 # SN clock speed
 
+        # prepare the raw output
+        raw_stream = bytearray()
+
         # YM has 12 bits of precision
         # Lower values correspond to higher frequencies - see http://poi.ribbon.free.fr/tmp/freq2regs.htm
         ym_freq_hi = (float(clock) / 16.0) / float(1)
@@ -308,8 +311,8 @@ class YmReader(object):
         ym_env_freq_max = 0        
 
 
-        sn_attn_latch = [ -1, -1, -1, -1 ]
-        sn_tone_latch = [ -1, -1, -1, -1 ]
+        sn_attn_latch = [ 0, 0, 0, 0 ]
+        sn_tone_latch = [ 0, 0, 0, 0 ]
 
         # my dump code
         for i in xrange(cnt):
@@ -445,15 +448,20 @@ class YmReader(object):
             # given a channel and tone value, output vgm command
             def output_sn_tone(channel, tone):
 
+                if tone > 1023:
+                    print "SHITE"
+                if tone < 0:
+                    print "FUCK"
                 r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
-                r_hi = tone >> 4
+                r_hi = (tone >> 4) & 63
 
                 vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
                 vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
                 vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
                 vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
 
-
+                raw_stream.extend( struct.pack('B', (tone & 15)) )
+                raw_stream.extend( struct.pack('B', (tone >> 4) & 63) )
 
             # output a noise tone on channel 3
             def output_sn_noise(tone):
@@ -462,6 +470,8 @@ class YmReader(object):
 
                 vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
                 vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
+
+                raw_stream.extend( struct.pack('B', (tone & 15)) ) # LATCH TONE
             
 
             # given a channel and volume value, output vgm command
@@ -472,6 +482,7 @@ class YmReader(object):
                 vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
                 vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH VOLUME
 
+                raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
 
             #------------------------------------------------
             # extract the YM register values for this frame
@@ -739,42 +750,62 @@ class YmReader(object):
                 
 
             # output the final data to VGM
-            if sn_tone_out[0] != sn_tone_latch[0]:
-                sn_tone_latch[0] = sn_tone_out[0]
-                output_sn_tone(0, sn_tone_latch[0])
+            NO_DIFF = False
 
-            if sn_tone_out[1] != sn_tone_latch[1]:
-                sn_tone_latch[1] = sn_tone_out[1]              
-                output_sn_tone(1, sn_tone_latch[1])
+            if NO_DIFF:
+                output_sn_tone(0, sn_tone_out[0])
+                output_sn_tone(1, sn_tone_out[0])
+                output_sn_tone(2, sn_tone_out[0])
+                output_sn_noise(sn_tone_out[3])
 
-            if sn_tone_out[2] != sn_tone_latch[2]:
-                sn_tone_latch[2] = sn_tone_out[2]              
-                output_sn_tone(2, sn_tone_latch[2])
+                output_sn_volume(0, sn_attn_out[0])
+                output_sn_volume(1, sn_attn_out[1])
+                output_sn_volume(2, sn_attn_out[2])
+                output_sn_volume(3, sn_attn_out[3])
 
-            # for the noise channel, only output register writes
-            # if the noise tone has changed, so that we dont unnecessarily
-            # reset the LSFR
-            if sn_tone_out[3] != sn_tone_latch[3]:
-                sn_tone_latch[3] = sn_tone_out[3]
-                output_sn_noise(sn_tone_latch[3])
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
 
-            # volumes
-            if sn_attn_out[0] != sn_attn_latch[0]:
-                sn_attn_latch[0] = sn_attn_out[0]              
-                output_sn_volume(0, sn_attn_latch[0])
+            else:
+                    
+                if sn_tone_out[0] != sn_tone_latch[0]:
+                    sn_tone_latch[0] = sn_tone_out[0]
+                    output_sn_tone(0, sn_tone_latch[0])
 
-            if sn_attn_out[1] != sn_attn_latch[1]:
-                sn_attn_latch[1] = sn_attn_out[1]              
-                output_sn_volume(1, sn_attn_latch[1])
+                if sn_tone_out[1] != sn_tone_latch[1]:
+                    sn_tone_latch[1] = sn_tone_out[1]              
+                    output_sn_tone(1, sn_tone_latch[1])
 
-            if sn_attn_out[2] != sn_attn_latch[2]:
-                sn_attn_latch[2] = sn_attn_out[2]              
-                output_sn_volume(2, sn_attn_latch[2])
+                if sn_tone_out[2] != sn_tone_latch[2]:
+                    sn_tone_latch[2] = sn_tone_out[2]              
+                    output_sn_tone(2, sn_tone_latch[2])
 
-            if sn_attn_out[3] != sn_attn_latch[3]:
-                sn_attn_latch[3] = sn_attn_out[3]              
-                output_sn_volume(3, sn_attn_latch[3])
+                # for the noise channel, only output register writes
+                # if the noise tone has changed, so that we dont unnecessarily
+                # reset the LSFR
+                if sn_tone_out[3] != sn_tone_latch[3]:
+                    sn_tone_latch[3] = sn_tone_out[3]
+                    output_sn_noise(sn_tone_latch[3])
 
+                # volumes
+                if sn_attn_out[0] != sn_attn_latch[0]:
+                    sn_attn_latch[0] = sn_attn_out[0]              
+                    output_sn_volume(0, sn_attn_latch[0])
+                    
+                if sn_attn_out[1] != sn_attn_latch[1]:
+                    sn_attn_latch[1] = sn_attn_out[1]              
+                    output_sn_volume(1, sn_attn_latch[1])
+
+                if sn_attn_out[2] != sn_attn_latch[2]:
+                    sn_attn_latch[2] = sn_attn_out[2]              
+                    output_sn_volume(2, sn_attn_latch[2])
+
+                if sn_attn_out[3] != sn_attn_latch[3]:
+                    sn_attn_latch[3] = sn_attn_out[3]              
+                    output_sn_volume(3, sn_attn_latch[3])
 
 
             #------------------------------------------------
@@ -961,7 +992,33 @@ class YmReader(object):
         vgm_file.close()
         
         print "   VGM Processing : Written " + str(int(len(vgm_data))) + " bytes, GD3 tag used " + str(gd3_stream_length) + " bytes"
-        
+
+        # write to output file
+        frame_size = 11 #16
+        frame_total = len(raw_stream) / frame_size
+        fh = open(vgm_filename+".bin", 'wb')
+#        fh.write(raw_stream)
+
+        frame_count = frame_total #16 # frame_total #33 # number of frames to package at a time
+        #offs = 0
+        for c in xrange(frame_total / frame_count):
+            for r in xrange(frame_size):
+                rdata = bytearray()
+                for n in xrange(frame_count):
+                    rdata.append(raw_stream[c*frame_count*frame_size + n*frame_size + r])
+                #offs += frame_size
+                fh.write(rdata)
+ 
+        fh.close()
+
+# 16 bytes per frame
+# 16 frames per 256 byte page
+# unpack first frame on init
+# unpack remaining data
+# or 256 x 11 = 2816 bytes, 1 page per register = 256
+
+        print "   BIN Processing : Written " + str(int(len(raw_stream))) + " bytes"
+
         print "All done."                          
 
 
