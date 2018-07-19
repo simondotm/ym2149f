@@ -11,6 +11,9 @@ import time
 import binascii
 import math
 
+SN_CLOCK = 4000000 # SN target clock speed
+DEBUG_LEVEL = 0
+
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
 # R02 = Channel B Pitch LO (8 bits)
@@ -244,7 +247,7 @@ class YmReader(object):
         print "   VGM Processing : Writing output VGM file '" + vgm_filename + "'"
         vgm_stream = bytearray()
         vgm_time = 0
-        vgm_clock = 4000000 # SN clock speed
+        vgm_clock = SN_CLOCK
 
         # prepare the raw output
         raw_stream = bytearray()
@@ -273,8 +276,8 @@ class YmReader(object):
 
 
         print "---"
-        print get_register_data(0,0)
-        print get_register_data(1,0)
+        #print get_register_data(0,0)
+        #print get_register_data(1,0)
 
         # set default full volumes at the start of the tune for all channels
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
@@ -448,11 +451,13 @@ class YmReader(object):
 
             # given a channel and tone value, output vgm command
             def output_sn_tone(channel, tone):
-
+                
+                # these shouldnt happen
                 if tone > 1023:
-                    print "SHITE"
+                    print "ERROR: SN TONE OUT OF RANGE > 1023"
                 if tone < 0:
-                    print "FUCK"
+                    print "ERROR: SN TONE OUT OF RANGE < 0"
+
                 r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
                 r_hi = (tone >> 4) & 63
 
