@@ -120,6 +120,9 @@ Chip manufacturer data sheets are also very useful references:
 
 Other resources relating to [Atari ST music](Resources.md).
 
+This project borrows from the good work by [FlorentFlament](https://github.com/FlorentFlament/ym2149-streamer).
+
+
 
 
 
