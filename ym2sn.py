@@ -208,6 +208,7 @@ class YmReader(object):
         print "Parsing YM file..."
 
         self.__fd = fd
+        self.__filename = fd.name
         self.__parse_header()
         self.__data = []
         if not self.__data:
@@ -936,17 +937,18 @@ class YmReader(object):
         STRIP_GD3 = False
         VGM_FREQUENCY = 44100
         if not STRIP_GD3: # disable for no GD3 tag
-            gd3_data.extend( self.__header['song_name'] + b'\x00\x00') #title_eng' + b'\x00\x00')
-            gd3_data.extend('title_jap' + b'\x00\x00')
-            gd3_data.extend('game_eng' + b'\x00\x00')
-            gd3_data.extend('game_jap' + b'\x00\x00')
-            gd3_data.extend('console_eng' + b'\x00\x00')
-            gd3_data.extend('console_jap' + b'\x00\x00')
-            gd3_data.extend('artist_eng' + b'\x00\x00')
-            gd3_data.extend('artist_jap' + b'\x00\x00')
-            gd3_data.extend('date' + b'\x00\x00')
-            gd3_data.extend('vgm_creator' + b'\x00\x00')
-            gd3_data.extend('notes' + b'\x00\x00')
+            # note that GD3 requires two-byte characters
+            gd3_data.extend( self.__header['song_name'].encode("utf_16") + b'\x00' + b'\x00') #title_eng' + b'\x00\x00') # title_eng
+            gd3_data.extend( b'\x00\x00') # title_jap
+            gd3_data.extend( self.__filename.encode("utf_16") + b'\x00\x00') # game_eng
+            gd3_data.extend( b'\x00\x00') # game_jap
+            gd3_data.extend( 'Atari ST'.encode("utf_16") + b'\x00\x00') # console_eng
+            gd3_data.extend( b'\x00\x00') # console_jap
+            gd3_data.extend( self.__header['author_name'].encode("utf_16") + b'\x00\x00') # artist_eng
+            gd3_data.extend( b'\x00\x00') # artist_jap
+            gd3_data.extend( b'\x00\x00') # date
+            gd3_data.extend( 'github.com/simondotm/ym2149f'.encode("utf_16") + b'\x00\x00')# vgm_creator
+            gd3_data.extend( self.__header['song_comment'].encode("utf_16") + b'\x00\x00') # notes
             
             gd3_stream.extend('Gd3 ')
             gd3_stream.extend(struct.pack('I', 0x100))				# GD3 version
