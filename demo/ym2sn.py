@@ -11,7 +11,10 @@ import time
 import binascii
 import math
 
+# Runtime vars
 SN_CLOCK = 4000000 # SN target clock speed
+LSFR_TAP_BIT = 15 # which bit of the SN Noise LFSR is tapped (15 or 16) 
+
 DEBUG_LEVEL = 0
 
 # R00 = Channel A Pitch LO (8 bits)
@@ -262,8 +265,8 @@ class YmReader(object):
         sn_freq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0)
 
         # SN can generate periodic noise in the lower Hz range
-        sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * 15.0)
-        sn_pfreq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0 * 15.0)
+        sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * float(LSFR_TAP_BIT))
+        sn_pfreq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0 * float(LSFR_TAP_BIT))
 
         print "YM Tone Frequency range from " + str(ym_freq_lo) + "Hz to " + str(ym_freq_hi) + "Hz"
         print "SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz"
@@ -348,7 +351,7 @@ class YmReader(object):
                 baseline_freq = sn_freq_lo
                 sn_freq_scale = 1.0
                 if is_periodic:
-                    sn_freq_scale = 15.0
+                    sn_freq_scale = float(LSFR_TAP_BIT)
                     baseline_freq = sn_pfreq_lo
 
                 # tones should never exceed 12-bit range
