@@ -276,15 +276,16 @@ class YmReader(object):
         print get_register_data(0,0)
         print get_register_data(1,0)
 
-        # set default full volumes at the start of the tune for all channels
+        # set default volumes at the start of the tune for all channels
+        dv = 15 # default volume is 15 (silent)
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(0<<5)+16) ) # LATCH VOLUME
+        vgm_stream.extend( struct.pack('B', 128+(0<<5)+16+dv) ) # LATCH VOLUME C0
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(1<<5)+16) ) # LATCH VOLUME
+        vgm_stream.extend( struct.pack('B', 128+(1<<5)+16+dv) ) # LATCH VOLUME C1
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(2<<5)+16) ) # LATCH VOLUME
+        vgm_stream.extend( struct.pack('B', 128+(2<<5)+16+dv) ) # LATCH VOLUME C2
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(3<<5)+16+15) ) # LATCH VOLUME to SILENT
+        vgm_stream.extend( struct.pack('B', 128+(3<<5)+16+dv) ) # LATCH VOLUME C3 to SILENT
 
         # set periodic noise on channel 3
         vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
