@@ -123,11 +123,13 @@ class YmEnvelope():
         #self.__env_ena = 1      # enable envelopes always
 
     # set envelope shape register 13
+    def set_envelope_shape(self, r):
         self.__rd = r
         # reset state
         #self.__env_reset = 1
 
         # load initial state
+        if (r & YmEnvelope.ENV_ATT) == 0:  # attack
             self.__env_vol = 31
             self.__env_inc = 0      # -1
         else:
@@ -137,6 +139,7 @@ class YmEnvelope():
         self.__env_hold = 0
 
     # set the YM chip envelope frequency registers
+    def set_envelope_freq(self, hi, lo):
         self.__rb = lo
         self.__rc = hi
 
@@ -146,24 +149,30 @@ class YmEnvelope():
     # ALT = Alernate (invert incrementor at top or bottom)
     # HOLD = Hold (freeze counter at top or bottom)
 
+    def get_envelope_period(self):
         return self.__rc * 256 + self.__rb
 
     # get the current 5-bit envelope volume, 0-31
+    def get_envelope_volume(self):
         return self.__env_vol
 
     # advance emulation by 1 system cycle
+    def emulate_cycle(self):
 
         # emulate the clock divider
         #-- / 8 when SEL is high and /16 when SEL is low
 
+        ena_div = 0
         if (self.__cnt_div == 0):
             self.__cnt_div = 7 #(not I_SEL_L) & "111";
             ena_div = 1
         else:
+            self.__cnt_div = self.__cnt_div - 1
 
       
 
         # handle the envelope frequency counter
+        env_gen_freq = self.__rc & self.__rb
         #-- envelope freqs 1 and 0 are the same.
         if (env_gen_freq == 0):
             env_gen_comp = 0
@@ -185,6 +194,10 @@ class YmEnvelope():
         # update envelope if the envelope frequency counter has signalled
         if (env_ena == 1):
 
+            is_bot      = (self.__env_vol == 0)
+            is_bot_p1   = (self.__env_vol == 1)
+            is_top_m1   = (self.__env_vol == 30)
+            is_top      = (self.__env_vol == 31)
 
             # process hold
             if (self.__env_hold == 0):
@@ -195,6 +208,7 @@ class YmEnvelope():
 
 
             #-- envelope shape control.
+            if (self.__rd & YmEnvelope.ENV_CONT) == 0:
                 if (self.__env_inc == 0): #-- down
                     if is_bot_p1:
                         self.__env_hold = 1
@@ -202,13 +216,16 @@ class YmEnvelope():
                     if is_top:
                         self.__env_hold = 1
             else:
+                if (self.__rd & YmEnvelope.ENV_HOLD) == 1: #-- hold = 1
                     if (self.__env_inc == 0): #-- down
+                        if (self.__rd & YmEnvelope.ENV_ALT) == 1: #-- alt
                             if is_bot:
                                 self.__env_hold = 1
                         else:
                             if is_bot_p1:
                                 self.__env_hold = 1
                     else:
+                        if (self.__rd & YmEnvelope.ENV_ALT) == 1: #-- alt
                             if is_top:
                                 self.__env_hold = 1
                         else:
@@ -216,6 +233,7 @@ class YmEnvelope():
                                 self.__env_hold = 1
 
                 else:
+                    if (self.__rd & YmEnvelope.ENV_ALT) == 1: #-- alternate
                         if (self.__env_inc == 0): #-- down
                             if is_bot_p1:
                                 self.__env_hold = 1
@@ -230,7 +248,9 @@ class YmEnvelope():
                                 self.__env_inc = 0
 
     # advance the envelope emulator by provided number of clock cycles
+    def tick(self, clocks):
         for x in xrange(clocks):
+            self.emulate_cycle()
 
 
 
@@ -355,6 +375,7 @@ class YmReader(object):
 
         # create instance of YM envelope generator
         self.__ymenv = YmEnvelope()
+
         print "Parsing YM file..."
 
         self.__fd = fd
