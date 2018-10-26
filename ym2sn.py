@@ -158,7 +158,7 @@ class YmEnvelope():
 
     # get the current 5-bit envelope volume, 0-31
     def get_envelope_volume(self):
-        return self.__env_vol
+        return (self.__env_vol)# & 31)
 
     # advance emulation by 1 system cycle
     def emulate_cycle(self):
@@ -206,9 +206,9 @@ class YmEnvelope():
             # process hold
             if (self.__env_hold == 0):
                 if (self.__env_inc == 1):
-                    self.__env_vol = (self.__env_vol + 1)
+                    self.__env_vol = (self.__env_vol + 1) & 31
                 else:
-                    self.__env_vol = (self.__env_vol + 31)
+                    self.__env_vol = (self.__env_vol + 31) & 31
 
 
             #-- envelope shape control.
@@ -407,7 +407,7 @@ class YmReader(object):
         # prepare the YM file parser
         clock = self.__header['chip_clock']
         cnt  = self.__header['nb_frames']
-        #cnt = 10 * 50 # hack 10 secs only
+        cnt = 10 * 50 # hack 10 secs only
         regs = self.__data
 
         digi_drums = self.__header['nb_digidrums']
