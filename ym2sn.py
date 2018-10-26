@@ -10,6 +10,10 @@ import time
 import binascii
 import math
 
+ENABLE_ENVELOPES = False        # enable this to simulate envelopes in the output
+SN_CLOCK = 4000000              # set this to the target SN chip clock speed
+LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
+
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
 # R02 = Channel B Pitch LO (8 bits)
@@ -415,7 +419,7 @@ class YmReader(object):
         print "   VGM Processing : Writing output VGM file '" + vgm_filename + "'"
         vgm_stream = bytearray()
         vgm_time = 0
-        vgm_clock = 4000000 # SN clock speed
+        vgm_clock = SN_CLOCK # SN clock speed
 
         # prepare the raw output
         raw_stream = bytearray()
@@ -430,8 +434,8 @@ class YmReader(object):
         sn_freq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0)
 
         # SN can generate periodic noise in the lower Hz range
-        sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * 15.0)
-        sn_pfreq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0 * 15.0)
+        sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * float(LFSR_BIT))
+        sn_pfreq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0 * float(LFSR_BIT))
 
         print "YM Tone Frequency range from " + str(ym_freq_lo) + "Hz to " + str(ym_freq_hi) + "Hz"
         print "SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz"
@@ -517,7 +521,7 @@ class YmReader(object):
                 baseline_freq = sn_freq_lo
                 sn_freq_scale = 1.0
                 if is_periodic:
-                    sn_freq_scale = 15.0
+                    sn_freq_scale = float(LFSR_BIT)
                     baseline_freq = sn_pfreq_lo
 
                 # tones should never exceed 12-bit range
@@ -596,7 +600,7 @@ class YmReader(object):
                     ym_freq *= 2.0
                     print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
 
-                sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * 15.0 )
+                sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * float(LFSR_BIT) )
                 
                 # due to the integer maths, some precision is lost at the lower end
                 sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
@@ -608,7 +612,7 @@ class YmReader(object):
                     sn_tone = 1
                     print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
 
-                sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * 15.0)
+                sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * float(LFSR_BIT))
 
                 #print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
 
@@ -671,30 +675,32 @@ class YmReader(object):
             ym_envelope_b = get_register_byte( 9) & 16
             ym_envelope_c = get_register_byte(10) & 16
 
-            # process envelopes
-            # first set the envelope frequency
-            self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
+            # emulate the YM envelope logic if required
+            if (ENABLE_ENVELOPES):
+                # process envelopes
+                # first set the envelope frequency
+                self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
 
-            # next set the envelope shape, but only if it is set in the YM stream
-            # (since setting this register resets the envelope state)
-            ym_envelope_shape = get_register_byte(13)
-            if (ym_envelope_shape != 255):
-                print 'setting envelope shape'
-                self.__ymenv.set_envelope_shape(ym_envelope_shape)
+                # next set the envelope shape, but only if it is set in the YM stream
+                # (since setting this register resets the envelope state)
+                ym_envelope_shape = get_register_byte(13)
+                if (ym_envelope_shape != 255):
+                    print 'setting envelope shape'
+                    self.__ymenv.set_envelope_shape(ym_envelope_shape)
 
-            # use the envelope volume if M is set for any channel
-            if ym_envelope_a:
-                ym_volume_a = self.__ymenv.get_envelope_volume() / 2
-                print 'envelope on A'
-            if ym_envelope_b:
-                print 'envelope on B'
-                ym_volume_b = self.__ymenv.get_envelope_volume() / 2
-            if ym_envelope_c:
-                print 'envelope on C'
-                ym_volume_c = self.__ymenv.get_envelope_volume() / 2
+                # use the envelope volume if M is set for any channel
+                if ym_envelope_a:
+                    ym_volume_a = self.__ymenv.get_envelope_volume() / 2
+                    print 'envelope on A'
+                if ym_envelope_b:
+                    print 'envelope on B'
+                    ym_volume_b = self.__ymenv.get_envelope_volume() / 2
+                if ym_envelope_c:
+                    print 'envelope on C'
+                    ym_volume_c = self.__ymenv.get_envelope_volume() / 2
 
-            # update the envelope cpu emulation
-            self.__ymenv.tick( self.__header['chip_clock'] / 50 )
+                # update the envelope cpu emulation
+                self.__ymenv.tick( self.__header['chip_clock'] / 50 )
 
  
             # Have to properly mask these registers
@@ -1170,7 +1176,7 @@ class YmReader(object):
         vgm_data.extend(struct.pack('I', 0)) #self.metadata['loop_samples']))				# loop # samples
         vgm_data.extend(struct.pack('I', 50))#self.metadata['rate']))				# rate
         vgm_data.extend(struct.pack('H', 0x0003))	# 0x0003 for BBC configuration of SN76489 self.metadata['sn76489_feedback']))				# sn fb
-        vgm_data.extend(struct.pack('B', 15)) #self.metadata['sn76489_shift_register_width']))				# SNW	
+        vgm_data.extend(struct.pack('B', LFSR_BIT)) #self.metadata['sn76489_shift_register_width']))				# SNW	
         vgm_data.extend(struct.pack('B', 0))				# SN Flags			
         vgm_data.extend(struct.pack('I', 0))#self.metadata['ym2612_clock']))		
         vgm_data.extend(struct.pack('I', 0))#self.metadata['ym2151_clock']))	
