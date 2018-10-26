@@ -10,7 +10,7 @@ import time
 import binascii
 import math
 
-ENABLE_ENVELOPES = False        # enable this to simulate envelopes in the output
+ENABLE_ENVELOPES = True        # enable this to simulate envelopes in the output
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
 
@@ -176,7 +176,7 @@ class YmEnvelope():
       
 
         # handle the envelope frequency counter
-        env_gen_freq = self.__rc & self.__rb
+        env_gen_freq = (self.__rc * 256) + self.__rb
         #-- envelope freqs 1 and 0 are the same.
         if (env_gen_freq == 0):
             env_gen_comp = 0
@@ -407,6 +407,7 @@ class YmReader(object):
         # prepare the YM file parser
         clock = self.__header['chip_clock']
         cnt  = self.__header['nb_frames']
+        #cnt = 10 * 50 # hack 10 secs only
         regs = self.__data
 
         digi_drums = self.__header['nb_digidrums']
@@ -487,6 +488,8 @@ class YmReader(object):
         ym_env_freq_min = 65536
         ym_env_freq_max = 0        
 
+        # number of frames using envelopes
+        ym_env_count = 0 
 
         sn_attn_latch = [ 0, 0, 0, 0 ]
         sn_tone_latch = [ 0, 0, 0, 0 ]
@@ -674,6 +677,10 @@ class YmReader(object):
             ym_envelope_a = get_register_byte( 8) & 16
             ym_envelope_b = get_register_byte( 9) & 16
             ym_envelope_c = get_register_byte(10) & 16
+
+            # count occurrences of envelopes being used
+            if ym_envelope_a or ym_envelope_b or ym_envelope_c:
+                ym_env_count += 1
 
             # emulate the YM envelope logic if required
             if (ENABLE_ENVELOPES):
@@ -1116,10 +1123,14 @@ class YmReader(object):
         #--------------------------------------------
         print ""
         print "Info:"
+        print "         Num Frames - " + str(self.__header['nb_frames'])
         print " Channel A Hz range - " + str( get_ym_frequency(ym_tone_a_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_a_min) ) + "Hz"
         print " Channel B Hz range - " + str( get_ym_frequency(ym_tone_b_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_b_min) ) + "Hz"
         print " Channel C Hz range - " + str( get_ym_frequency(ym_tone_c_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_c_min) ) + "Hz"
+        print "      Num Digidrums - " + str(self.__header['nb_digidrums'])
         print "  Digidrum Hz range - " + str( ym_dd_freq_min ) + "Hz to " + str( ym_dd_freq_max ) + "Hz"
+        print "   Enveloped Frames - " + str( ym_env_count ) + " (" + str( ym_env_count*100.0/self.__header['nb_frames'] ) + "%)"
+
         print "  Envelope Hz range - " + str( ym_env_freq_min ) + "Hz to " + str( ym_env_freq_max ) + "Hz"
         print "        Noise range - " + str( ym_noise_min ) + " to " + str( ym_noise_max ) + " "
 
