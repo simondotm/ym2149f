@@ -86,6 +86,154 @@ import math
 
 
 
+# Class to emulate the YM2149 HW envelope generator
+class YmEnvelope():
+    # see http://www.cpcwiki.eu/index.php/Ym2149 for FPGA logic
+
+    ENV_MASTER_CLOCK = 2000000
+    ENV_CONT = (1<<3)
+    ENV_ATT = (1<<2)
+    ENV_ALT = (1<<1)
+    ENV_HOLD = (1<<0)
+
+    #-- envelope shapes
+    #-- CONT|ATT|ALT|HOLD
+    #-- 0 0 x x  \___
+    #-- 0 1 x x  /___
+    #-- 1 0 0 0  \\\\
+    #-- 1 0 0 1  \___
+    #-- 1 0 1 0  \/\/
+    #--           ___
+    #-- 1 0 1 1  \
+    #-- 1 1 0 0  ////
+    #--           ___
+    #-- 1 1 0 1  /
+    #-- 1 1 1 0  /\/\
+    #-- 1 1 1 1  /___    
+
+    def __init__(self):
+        self.__rb = 0   # Envelope frequency, 8-bit fine adjustment
+        self.__rc = 0   # Envelope frequency, 8-bit rough adjustment   
+        self.__rd = 0   # shape of envelope (CONT|ATT|ALT|HOLD)
+
+        self.__cnt_div = 0      # clock divider
+        self.__env_gen_cnt = 0  # envelope counter
+
+        #self.__env_reset = 0
+        #self.__env_ena = 1      # enable envelopes always
+
+    # set envelope shape register 13
+        self.__rd = r
+        # reset state
+        #self.__env_reset = 1
+
+        # load initial state
+            self.__env_vol = 31
+            self.__env_inc = 0      # -1
+        else:
+            self.__env_vol = 0
+            self.__env_inc = 1      # +1
+
+        self.__env_hold = 0
+
+    # set the YM chip envelope frequency registers
+        self.__rb = lo
+        self.__rc = hi
+
+
+    # CONT = If 0, preset modes
+    # ATT = Attack (=0 starts high decrement to low, =1 starts low incrementing to high)
+    # ALT = Alernate (invert incrementor at top or bottom)
+    # HOLD = Hold (freeze counter at top or bottom)
+
+        return self.__rc * 256 + self.__rb
+
+    # get the current 5-bit envelope volume, 0-31
+        return self.__env_vol
+
+    # advance emulation by 1 system cycle
+
+        # emulate the clock divider
+        #-- / 8 when SEL is high and /16 when SEL is low
+
+        if (self.__cnt_div == 0):
+            self.__cnt_div = 7 #(not I_SEL_L) & "111";
+            ena_div = 1
+        else:
+
+      
+
+        # handle the envelope frequency counter
+        #-- envelope freqs 1 and 0 are the same.
+        if (env_gen_freq == 0):
+            env_gen_comp = 0
+        else:
+            env_gen_comp = (env_gen_freq - 1)
+
+
+        env_ena = 0
+        if (ena_div == 1): #-- divider ena
+            if (self.__env_gen_cnt >= env_gen_comp):
+                self.__env_gen_cnt = 0
+                env_ena = 1
+            else:
+                self.__env_gen_cnt = (self.__env_gen_cnt + 1)
+
+
+
+
+        # update envelope if the envelope frequency counter has signalled
+        if (env_ena == 1):
+
+
+            # process hold
+            if (self.__env_hold == 0):
+                if (self.__env_inc == 1):
+                    self.__env_vol = (self.__env_vol + 1)
+                else:
+                    self.__env_vol = (self.__env_vol + 31)
+
+
+            #-- envelope shape control.
+                if (self.__env_inc == 0): #-- down
+                    if is_bot_p1:
+                        self.__env_hold = 1
+                else:
+                    if is_top:
+                        self.__env_hold = 1
+            else:
+                    if (self.__env_inc == 0): #-- down
+                            if is_bot:
+                                self.__env_hold = 1
+                        else:
+                            if is_bot_p1:
+                                self.__env_hold = 1
+                    else:
+                            if is_top:
+                                self.__env_hold = 1
+                        else:
+                            if is_top_m1:
+                                self.__env_hold = 1
+
+                else:
+                        if (self.__env_inc == 0): #-- down
+                            if is_bot_p1:
+                                self.__env_hold = 1
+                            if is_bot:
+                                self.__env_hold = 0
+                                self.__env_inc = 1
+                        else:
+                            if is_top_m1:
+                                self.__env_hold = 1
+                            if is_top:
+                                self.__env_hold = 0
+                                self.__env_inc = 0
+
+    # advance the envelope emulator by provided number of clock cycles
+        for x in xrange(clocks):
+
+
+
 
 class YmReader(object):
 
@@ -205,6 +353,8 @@ class YmReader(object):
 
     def __init__(self, fd):
 
+        # create instance of YM envelope generator
+        self.__ymenv = YmEnvelope()
         print "Parsing YM file..."
 
         self.__fd = fd
@@ -496,9 +646,34 @@ class YmReader(object):
             ym_volume_c = get_register_byte(10) & 15
 
             # envelope attentuation mode flags
-            ym_envelope_a = get_register_byte( 8) & 4
-            ym_envelope_b = get_register_byte( 9) & 4
-            ym_envelope_c = get_register_byte(10) & 4
+            ym_envelope_a = get_register_byte( 8) & 16
+            ym_envelope_b = get_register_byte( 9) & 16
+            ym_envelope_c = get_register_byte(10) & 16
+
+            # process envelopes
+            # first set the envelope frequency
+            self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
+
+            # next set the envelope shape, but only if it is set in the YM stream
+            # (since setting this register resets the envelope state)
+            ym_envelope_shape = get_register_byte(13)
+            if (ym_envelope_shape != 255):
+                print 'setting envelope shape'
+                self.__ymenv.set_envelope_shape(ym_envelope_shape)
+
+            # use the envelope volume if M is set for any channel
+            if ym_envelope_a:
+                ym_volume_a = self.__ymenv.get_envelope_volume() / 2
+                print 'envelope on A'
+            if ym_envelope_b:
+                print 'envelope on B'
+                ym_volume_b = self.__ymenv.get_envelope_volume() / 2
+            if ym_envelope_c:
+                print 'envelope on C'
+                ym_volume_c = self.__ymenv.get_envelope_volume() / 2
+
+            # update the envelope cpu emulation
+            self.__ymenv.tick( self.__header['chip_clock'] / 50 )
 
  
             # Have to properly mask these registers
