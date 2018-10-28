@@ -10,9 +10,15 @@ import time
 import binascii
 import math
 
-ENABLE_ENVELOPES = True        # enable this to simulate envelopes in the output
+ENABLE_ENVELOPES = False        # enable this to simulate envelopes in the output
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
+FORCE_BASS_CHANNEL = -1          # set this to 0,1 or 2 (A/B/C) or -1
+if ENABLE_ENVELOPES:
+    HACK_TIME = 10                  # set to non-zero to output only first N seconds
+else:
+    HACK_TIME = 0
+
 
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
@@ -408,7 +414,7 @@ class YmReader(object):
 
         # create instance of YM envelope generator
         self.__ymenv = YmEnvelope()
-        self.__ymenv.test()
+        #self.__ymenv.test()
 
         print "Parsing YM file..."
 
@@ -437,7 +443,8 @@ class YmReader(object):
         # prepare the YM file parser
         clock = self.__header['chip_clock']
         cnt  = self.__header['nb_frames']
-        cnt = 10 * 50 # hack 10 secs only
+        if HACK_TIME > 0:
+            cnt = HACK_TIME * 50 # hack 10 secs only
         regs = self.__data
 
         digi_drums = self.__header['nb_digidrums']
@@ -540,14 +547,18 @@ class YmReader(object):
                 else:
                     return key0      
 
+            #--------------------------------------------------------------
             # return frequency in hz of a given YM tone/noise pitch
+            #--------------------------------------------------------------
             def get_ym_frequency(v):
                 if v < 1:
                     v = 1
                 return clock / (16 * v)
 
 
+            #--------------------------------------------------------------
             # given a YM tone period, return the equivalent SN tone register period
+            #--------------------------------------------------------------
             def ym_to_sn(ym_tone, is_periodic = False):
 
                 # Adjust freq scale & baseline range if periodic noise selected
@@ -609,7 +620,9 @@ class YmReader(object):
 
                 return sn_tone
 
+            #--------------------------------------------------------------
             # As above, but for periodic white noise
+            #--------------------------------------------------------------
             def ym_to_sn_periodic(ym_tone):
 
                 # tones should never exceed 12-bit range
@@ -655,7 +668,9 @@ class YmReader(object):
 
                 return sn_tone
 
+            #--------------------------------------------------------------
             # given a channel and tone value, output vgm command
+            #--------------------------------------------------------------
             def output_sn_tone(channel, tone):
 
                 if tone > 1023:
@@ -673,7 +688,9 @@ class YmReader(object):
                 raw_stream.extend( struct.pack('B', (tone & 15)) )
                 raw_stream.extend( struct.pack('B', (tone >> 4) & 63) )
 
+            #--------------------------------------------------------------
             # output a noise tone on channel 3
+            #--------------------------------------------------------------
             def output_sn_noise(tone):
 
                 r_lo = 128 + (3 << 5) + (tone & 15)
@@ -684,7 +701,9 @@ class YmReader(object):
                 raw_stream.extend( struct.pack('B', (tone & 15)) ) # LATCH TONE
             
 
+            #--------------------------------------------------------------
             # given a channel and volume value, output vgm command
+            #--------------------------------------------------------------
             def output_sn_volume(channel, volume):
 
                 r_lo = 128 + (channel << 5) + 16 + (15 - (volume & 15))    # bit 4 set for volume, SN volumes are inverted
@@ -694,7 +713,11 @@ class YmReader(object):
 
                 raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
 
+
+
+
             #------------------------------------------------
+            # Conversion Logic
             # extract the YM register values for this frame
             #------------------------------------------------
 
@@ -722,7 +745,7 @@ class YmReader(object):
                 # (since setting this register resets the envelope state)
                 ym_envelope_shape = get_register_byte(13)
                 if (ym_envelope_shape != 255):
-                    print 'setting envelope shape'
+                    print 'setting envelope shape ' + format(ym_envelope_shape, '#004b')
                     self.__ymenv.set_envelope_shape(ym_envelope_shape)
 
                 # use the envelope volume if M is set for any channel
@@ -735,9 +758,6 @@ class YmReader(object):
                 if ym_envelope_c:
                     print 'envelope on C'
                     ym_volume_c = self.__ymenv.get_envelope_volume() / 2
-
-                # update the envelope cpu emulation
-                self.__ymenv.tick( self.__header['chip_clock'] / 50 )
 
  
             # Have to properly mask these registers
@@ -893,9 +913,22 @@ class YmReader(object):
                     # mute channel 2
                     sn_attn_out[2] = 0
 
+
+
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
+                    bass_channel = 2
                     if ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c:
+                        bass_channel = 0
+                    else:
+                        if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
+                            bass_channel = 1
+
+                    if (FORCE_BASS_CHANNEL >= 0):
+                        bass_channel = FORCE_BASS_CHANNEL
+                    
+                    # Swap channels according to bass preference
+                    if bass_channel == 0:
                         # it's A
                         print " Channel A -> Bass "                     
 
@@ -908,7 +941,7 @@ class YmReader(object):
                         sn_tone_out[2] = ym_to_sn(ym_tone_a, True)
 
                     else:
-                        if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
+                        if bass_channel == 1:
                             # it's B
                             print " Channel B -> Bass "                     
 
@@ -1108,13 +1141,14 @@ class YmReader(object):
             s += " " + getregisterflag(m,0, "----", "HOLD")
             s += " ]"
 
-            # Envelope frequency
+            # Envelope frequency - this is the frequency that the counters will update
+            # and therefore the frequency that a CPU would have to simulate them for accurate sound
             if ym_envelope_f == 0:
                 #print "WARNING: Envelope frequency is 0 - unexpected & unhandled"
                 # It's ok, happens when no envelope being used
                 ehz = 0
             else:
-                ehz = (float(clock) / (256.0 * float(ym_envelope_f))) * 32.0
+                ehz = (float(clock) / 8.0) / float(ym_envelope_f)
             
             s += ", Env Freq ["
             s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
@@ -1146,7 +1180,21 @@ class YmReader(object):
             print s  
 
             # now output to vgm
-            vgm_stream.extend( struct.pack('B', 0x63) ) # WAIT50
+            # so, for a higher res output we could output the volume here.
+
+            if True and ENABLE_ENVELOPES:
+
+                for n in xrange(882):
+                    # update the envelope cpu emulation
+                    self.__ymenv.tick( self.__header['chip_clock'] / 44100 )
+                    vgm_stream.extend( struct.pack('B', 0x61) ) 
+                    vgm_stream.extend( struct.pack('B', 0x01) ) 
+                    vgm_stream.extend( struct.pack('B', 0x00) ) 
+            else:
+                if (ENABLE_ENVELOPES):
+                    # update the envelope cpu emulation
+                    self.__ymenv.tick( self.__header['chip_clock'] / 50 )
+                vgm_stream.extend( struct.pack('B', 0x63) ) # WAIT50, or 882 samples (44100/50), short for 0x61 0x72 0x03
 
         #--------------------------------------------
         # Information
