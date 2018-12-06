@@ -10,15 +10,18 @@ import time
 import binascii
 import math
 
-ENABLE_ENVELOPES = False        # enable this to simulate envelopes in the output
+ENABLE_ENVELOPES = True        # enable this to simulate envelopes in the output
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
 FORCE_BASS_CHANNEL = -1          # set this to 0,1 or 2 (A/B/C) or -1
+
+SIM_ENVELOPES = False   # set to true to use full volume for envelepe controlled sounds
 if ENABLE_ENVELOPES:
-    HACK_TIME = 10                  # set to non-zero to output only first N seconds
+    HACK_TIME = 0 #20                  # set to non-zero to output only first N seconds
 else:
     HACK_TIME = 0
 
+ENABLE_NOISE = True
 
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
@@ -97,7 +100,7 @@ else:
 
 
 # Class to emulate the YM2149 HW envelope generator
-class YmEnvelope():
+class YmEnvelopeFPGA():
     # see http://www.cpcwiki.eu/index.php/Ym2149 for FPGA logic
 
     ENV_MASTER_CLOCK = 2000000
@@ -121,6 +124,25 @@ class YmEnvelope():
     #-- 1 1 1 0  /\/\
     #-- 1 1 1 1  /___    
 
+	
+	# Envelopes could be implemented much faster as lookup tables.
+	# 64 entry tables set based on the envelope shape
+	# with variants as:
+	# Ramp Up / Hold High
+	# Ramp Up / Hold Low
+	# Ramp Down / Hold Low
+	# Ramp Down / Hold High
+	# Ramp Up / Ramp Down (Loop)
+	# Ramp Up / Ramp Up (Loop) 
+	# Ramp Down / Ramp Down (Loop)
+	# 
+	# Pre-create the 16 shapes as an array of 64 values from 0-31 (output V) 
+	# Select appropriate active table as ETABLE when env shape is set
+	# ELOOP on, if bit 0 (HOLD) is 1 OR bit 3 (CONT) is 0
+	# Each update, add N envelope cycles to envelope counter
+	# if ELOOP: ECNT &= 63 else ECNT = MAX(ECNT,63)
+	# V = ETABLE[ECNT]
+	
     def __init__(self):
         self.reset()
 
@@ -147,7 +169,7 @@ class YmEnvelope():
         #self.__env_reset = 1
 
         # load initial state
-        if (r & YmEnvelope.ENV_ATT) == 0:  # attack
+        if (r & self.ENV_ATT) == 0:  # attack
             self.__env_vol = 31
             self.__env_inc = 0      # -1
         else:
@@ -215,7 +237,7 @@ class YmEnvelope():
 
             #-- envelope shape control.
             # CONT=0
-            if (self.__rd & YmEnvelope.ENV_CONT) == 0:
+            if (self.__rd & self.ENV_CONT) == 0:
                 if (self.__env_inc == 0): #-- down
                     if is_bot_p1:
                         self.__env_hold = 1
@@ -224,17 +246,17 @@ class YmEnvelope():
                         self.__env_hold = 1
             else:
                 # CONT = 1
-                if (self.__rd & YmEnvelope.ENV_HOLD): #-- hold = 1
+                if (self.__rd & self.ENV_HOLD): #-- hold = 1
                     # CONT=1, HOLD=1
                     if (self.__env_inc == 0): #-- down
-                        if (self.__rd & YmEnvelope.ENV_ALT): #-- alt
+                        if (self.__rd & self.ENV_ALT): #-- alt
                             if is_bot:
                                 self.__env_hold = 1
                         else:
                             if is_bot_p1:
                                 self.__env_hold = 1
                     else:
-                        if (self.__rd & YmEnvelope.ENV_ALT): #-- alt
+                        if (self.__rd & self.ENV_ALT): #-- alt
                             if is_top:
                                 self.__env_hold = 1
                         else:
@@ -243,7 +265,7 @@ class YmEnvelope():
 
                 else:
                     # CONT=1, HOLD=0
-                    if (self.__rd & YmEnvelope.ENV_ALT): #-- alternate
+                    if (self.__rd & self.ENV_ALT): #-- alternate
                         #print 'alt'
                         if (self.__env_inc == 0): #-- down
                             if is_bot_p1:
@@ -293,6 +315,189 @@ class YmEnvelope():
             print 'output volume M=' + str(format(m, 'x')) + ' - ' + vs
 
 
+			
+#---- FAST VERSION
+
+# Class to emulate the YM2149 HW envelope generator
+class YmEnvelope():
+    # see http://www.cpcwiki.eu/index.php/Ym2149 for FPGA logic
+
+    ENV_MASTER_CLOCK = 2000000
+    ENV_CONT = (1<<3)
+    ENV_ATT = (1<<2)
+    ENV_ALT = (1<<1)
+    ENV_HOLD = (1<<0)
+
+    #-- envelope shapes
+    #-- CONT|ATT|ALT|HOLD
+    #-- 0 0 x x  \___
+    #-- 0 1 x x  /___
+    #-- 1 0 0 0  \\\\
+    #-- 1 0 0 1  \___
+    #-- 1 0 1 0  \/\/
+    #--           ___
+    #-- 1 0 1 1  \
+    #-- 1 1 0 0  ////
+    #--           ___
+    #-- 1 1 0 1  /
+    #-- 1 1 1 0  /\/\
+    #-- 1 1 1 1  /___    
+
+	
+	# Envelopes could be implemented much faster as lookup tables.
+	# 64 entry tables set based on the envelope shape
+	# with variants as:
+	# Ramp Up / Hold High
+	# Ramp Up / Hold Low
+	# Ramp Down / Hold Low
+	# Ramp Down / Hold High
+	# Ramp Up / Ramp Down (Loop)
+	# Ramp Up / Ramp Up (Loop) 
+	# Ramp Down / Ramp Down (Loop)
+	# 
+	# Pre-create the 16 shapes as an array of 64 values from 0-31 (output V) 
+	# Select appropriate active table as ETABLE when env shape is set
+	# ELOOP on, if bit 0 (HOLD) is 1 OR bit 3 (CONT) is 0
+	# Each update, add N envelope cycles to envelope counter
+	# if ELOOP: ECNT &= 63 else ECNT = MAX(ECNT,63)
+	# V = ETABLE[ECNT]
+	
+    def __init__(self):
+        self.reset()
+
+    # reset the chip logic state
+    def reset(self):
+        self.__rb = 0   # Envelope frequency, 8-bit fine adjustment
+        self.__rc = 0   # Envelope frequency, 8-bit rough adjustment   
+        self.__rd = 0   # shape of envelope (CONT|ATT|ALT|HOLD)
+
+        self.__clock_cnt = 0      # clock divider
+        self.__env_cnt = 0  # envelope counter (index into the table)
+
+        self.__env_table = []	# current envelope table
+
+        ramp_up = []
+        ramp_dn = []
+        hold_hi = []
+        hold_lo = []
+
+        for x in xrange(0,32):
+            ramp_up.append(x)
+            ramp_dn.append(31-x)
+            hold_hi.append(31)
+            hold_lo.append(0)
+            
+        self.__envelope_shapes = []
+            
+        def createShape(phase1, phase2):
+            temp = []
+            temp.extend(phase1)
+            temp.extend(phase2)
+            self.__envelope_shapes.append( temp )
+            
+        # shapes 0-3
+        createShape(ramp_dn, hold_lo)
+        createShape(ramp_dn, hold_lo)
+        createShape(ramp_dn, hold_lo)
+        createShape(ramp_dn, hold_lo)
+
+        # shapes 4-7
+        createShape(ramp_up, hold_lo)
+        createShape(ramp_up, hold_lo)
+        createShape(ramp_up, hold_lo)
+        createShape(ramp_up, hold_lo)
+
+        # shapes 8-15
+        createShape(ramp_dn, ramp_dn)
+        createShape(ramp_dn, hold_lo)
+        createShape(ramp_dn, ramp_up)
+        createShape(ramp_dn, hold_hi)
+        createShape(ramp_up, ramp_up)
+        createShape(ramp_up, hold_hi)
+        createShape(ramp_up, ramp_dn)
+        createShape(ramp_up, hold_lo)
+
+        # initialise shape
+        self.set_envelope_shape(self.__rd)
+
+
+    # set envelope shape register 13
+    def set_envelope_shape(self, r):
+        # stash register setting
+        self.__rd = r
+        self.__env_cnt = 0
+
+        # load initial shape table
+        self.__env_table = self.__envelope_shapes[r & 15]
+
+        # determine if it is a looped shape / mode
+        if (r & self.ENV_HOLD) == self.ENV_HOLD or (r & self.ENV_CONT) == 0:
+            self.__env_hold = True
+        else:
+            self.__env_hold = False
+
+        print "  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) 
+
+
+    # set the YM chip envelope frequency registers
+    def set_envelope_freq(self, hi, lo):
+        self.__rb = lo
+        self.__rc = hi
+
+
+    def get_envelope_period(self):
+        return self.__rc * 256 + self.__rb
+
+    # get the current 5-bit envelope volume, 0-31
+    def get_envelope_volume(self):
+        return (self.__env_table[self.__env_cnt])# & 31)
+
+
+    # advance the envelope emulator by provided number of clock cycles
+    def tick(self, clocks):
+
+        #print "tick(" + str(clocks) + ")"
+        self.__clock_cnt += clocks
+
+        f = self.get_envelope_period() * 8
+        #print " f=" + str(f)
+
+        if (f > 0):
+            while (self.__clock_cnt >= f):	
+
+                self.__env_cnt += 1
+                self.__clock_cnt -= f
+                #print "  __env_cnt=" + str(self.__env_cnt) + ", __clock_cnt=" + str(self.__clock_cnt)
+
+		# if looping, mask the bottom 6 bits, otherwise clamp at 63
+        if self.__env_hold:
+            #print "held"
+            self.__env_cnt = min(63, self.__env_cnt)
+        else:
+            #print "looped"
+            self.__env_cnt &= 63
+
+        #print "   Finished Tick __env_cnt=" + str(self.__env_cnt)
+
+
+    def test(self):
+        self.reset()
+        print 'default volume - ' + str(self.get_envelope_volume())
+
+        for m in xrange(16):
+            self.reset()
+            self.set_envelope_shape(m)
+            self.set_envelope_freq(0,1) # interval of 1
+            vs = ''
+            for n in xrange(128):
+                v = self.get_envelope_volume() >> 1
+                vs += format(v, 'x')
+                self.tick(8)
+
+            print 'output volume M=' + str(format(m, 'x')) + ' - ' + vs
+
+        #stop
+			
 
 class YmReader(object):
 
@@ -612,7 +817,7 @@ class YmReader(object):
 
                     sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
 
-                #print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
+                print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
 
                 hz_err = sn_freq - ym_freq
                 if hz_err > 2.0 or hz_err < -2.0:
@@ -720,7 +925,7 @@ class YmReader(object):
             # Conversion Logic
             # extract the YM register values for this frame
             #------------------------------------------------
-
+            print "--- " + s			
             # volume attenuation level (if bit 4 is clear)
             ym_volume_a = get_register_byte(8) & 15
             ym_volume_b = get_register_byte(9) & 15
@@ -731,6 +936,17 @@ class YmReader(object):
             ym_envelope_b = get_register_byte( 9) & 16
             ym_envelope_c = get_register_byte(10) & 16
 
+            # if envelopes are not enabled use max volume
+            # not a great simulation, but prevents some audio being muted
+            if ENABLE_ENVELOPES == 0 and SIM_ENVELOPES == 1:
+                if ym_envelope_a:
+                    ym_volume_a = 15
+                if ym_envelope_b:
+                    ym_volume_b = 15
+                if ym_envelope_c:
+                    ym_volume_c = 15
+
+            
             # count occurrences of envelopes being used
             if ym_envelope_a or ym_envelope_b or ym_envelope_c:
                 ym_env_count += 1
@@ -876,7 +1092,7 @@ class YmReader(object):
             # the calculate a volume which is the average level
             noise_volume = 0
             noise_active = 0
-            if ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c:
+            if ENABLE_NOISE and (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
 
                 if ym_mix_noise_a: # and not ym_mix_tone_a:
                     noise_volume += ym_volume_a
@@ -891,7 +1107,9 @@ class YmReader(object):
                 # average the volume based on number of active noise channels
                 noise_volume /= noise_active
 
-                print "OUTPUT NOISE! " + str(noise_volume)            
+                print "OUTPUT NOISE! vol=" + str(noise_volume) + " ym_noise=" + str(ym_noise)          
+
+            #noise_active = 0 # HACK
 
             ENABLE_BASS_TONES = True
             bass_active = False
@@ -995,10 +1213,10 @@ class YmReader(object):
                     ym_noise_max = max(ym_noise, ym_noise_max)
 
                 #snf = float(vgm_clock) / (16.0 * ym_noise)
-                #print "noise_freq=" + str(noise_freq) + "Hz"
-                #print "SN 0 = " + str(float(vgm_clock) / (16.0 * 16.0))
-                #print "SN 1 = " + str(float(vgm_clock) / (16.0 * 32.0))
-                #print "SN 2 = " + str(float(vgm_clock) / (16.0 * 64.0))
+                print "noise_freq=" + str(noise_freq) + "Hz"
+                print "SN 0 = " + str(float(vgm_clock) / (16.0 * 16.0))
+                print "SN 1 = " + str(float(vgm_clock) / (16.0 * 32.0))
+                print "SN 2 = " + str(float(vgm_clock) / (16.0 * 64.0))
                 
                 # SN internal clock is 1/16 of external clock
                 # white noise on the SN has 4 frequencies
@@ -1012,8 +1230,20 @@ class YmReader(object):
                 # the output is pulsed - this is the same as the YM chip:
                 # clock / 16N
 
+                sn_noise = 0
+                if False:
+                    if ym_noise > 24:
+                        sn_noise = 0
+                    else:
+                        if ym_noise > 8:
+                            sn_noise = 1
+                        else:
+                            sn_noise = 2
+
+                print 'sn_noise = ' + str(sn_noise)
+
                 sn_attn_out[3] = noise_volume
-                sn_tone_out[3] = 4 # White noise, fixed low frequency (16 cycle)
+                sn_tone_out[3] = 4 + sn_noise # White noise, fixed low frequency (16 cycle)
                 # most tunes dont seem to change the noise frequency much
             else:
                 if bass_active:
@@ -1148,7 +1378,7 @@ class YmReader(object):
                 # It's ok, happens when no envelope being used
                 ehz = 0
             else:
-                ehz = (float(clock) / 8.0) / float(ym_envelope_f)
+                ehz = float(ym_envelope_f) #(float(clock) / 8.0) / float(ym_envelope_f)
             
             s += ", Env Freq ["
             s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
@@ -1182,7 +1412,7 @@ class YmReader(object):
             # now output to vgm
             # so, for a higher res output we could output the volume here.
 
-            if True and ENABLE_ENVELOPES:
+            if False and ENABLE_ENVELOPES:
 
                 for n in xrange(882):
                     # update the envelope cpu emulation
