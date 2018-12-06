@@ -323,6 +323,7 @@ class YmEnvelope():
     # see http://www.cpcwiki.eu/index.php/Ym2149 for FPGA logic
 
     ENV_MASTER_CLOCK = 2000000
+    ENV_CLOCK_DIVIDER = 8
     ENV_CONT = (1<<3)
     ENV_ATT = (1<<2)
     ENV_ALT = (1<<1)
@@ -436,6 +437,7 @@ class YmEnvelope():
         else:
             self.__env_hold = False
 
+        self.__env_volume = self.__env_table[0]
         print "  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) 
 
 
@@ -450,7 +452,8 @@ class YmEnvelope():
 
     # get the current 5-bit envelope volume, 0-31
     def get_envelope_volume(self):
-        return (self.__env_table[self.__env_cnt])# & 31)
+        return self.__env_volume
+        #return (self.__env_table[self.__env_cnt])# & 31)
 
 
     # advance the envelope emulator by provided number of clock cycles
@@ -459,27 +462,39 @@ class YmEnvelope():
         #print "tick(" + str(clocks) + ")"
         self.__clock_cnt += clocks
 
-        f = self.get_envelope_period() * 8
+        f = self.get_envelope_period() * ENV_CLOCK_DIVIDER
         #print " f=" + str(f)
 
+        v = self.__env_table[self.__env_cnt]
+        n = 1
         if (f > 0):
+            # the envelope logic runs every ENV_CLOCK_DIVIDER clock cycles
+            # iterate correct number of envelope periods based on the current envelope frequency
+            # we average the outputs processed, as a simple low pass filter to compensate for larger values of clocks and create a sampled output volume
+            # TODO: a better resampling filter 
             while (self.__clock_cnt >= f):	
 
                 self.__env_cnt += 1
                 self.__clock_cnt -= f
+
+
+                # if looping, mask the bottom 6 bits, otherwise clamp at 63
+                if self.__env_hold:
+                    self.__env_cnt = min(63, self.__env_cnt)
+                else:
+                    self.__env_cnt &= 63
+
+                # increase number of envelope samples
+                n += 1
+                # add the envelope volume to the sampled volume
+                v += self.__env_table[self.__env_cnt]
                 #print "  __env_cnt=" + str(self.__env_cnt) + ", __clock_cnt=" + str(self.__clock_cnt)
 
-		# if looping, mask the bottom 6 bits, otherwise clamp at 63
-        if self.__env_hold:
-            #print "held"
-            self.__env_cnt = min(63, self.__env_cnt)
-        else:
-            #print "looped"
-            self.__env_cnt &= 63
-
+        # output volume is the average volume for the elapsed number of clocks
+        self.__env_volume = v / n
         #print "   Finished Tick __env_cnt=" + str(self.__env_cnt)
 
-
+    # perform a check that the logic is working correctly
     def test(self):
         self.reset()
         print 'default volume - ' + str(self.get_envelope_volume())
