@@ -100,8 +100,9 @@ ENABLE_NOISE = True
 
 
 # Class to emulate the YM2149 HW envelope generator
+# Based on http://www.cpcwiki.eu/index.php/Ym2149 FPGA logic
+# This is very slow. No longer used.
 class YmEnvelopeFPGA():
-    # see http://www.cpcwiki.eu/index.php/Ym2149 for FPGA logic
 
     ENV_MASTER_CLOCK = 2000000
     ENV_CONT = (1<<3)
@@ -124,24 +125,6 @@ class YmEnvelopeFPGA():
     #-- 1 1 1 0  /\/\
     #-- 1 1 1 1  /___    
 
-	
-	# Envelopes could be implemented much faster as lookup tables.
-	# 64 entry tables set based on the envelope shape
-	# with variants as:
-	# Ramp Up / Hold High
-	# Ramp Up / Hold Low
-	# Ramp Down / Hold Low
-	# Ramp Down / Hold High
-	# Ramp Up / Ramp Down (Loop)
-	# Ramp Up / Ramp Up (Loop) 
-	# Ramp Down / Ramp Down (Loop)
-	# 
-	# Pre-create the 16 shapes as an array of 64 values from 0-31 (output V) 
-	# Select appropriate active table as ETABLE when env shape is set
-	# ELOOP on, if bit 0 (HOLD) is 1 OR bit 3 (CONT) is 0
-	# Each update, add N envelope cycles to envelope counter
-	# if ELOOP: ECNT &= 63 else ECNT = MAX(ECNT,63)
-	# V = ETABLE[ECNT]
 	
     def __init__(self):
         self.reset()
@@ -317,10 +300,11 @@ class YmEnvelopeFPGA():
 
 			
 #---- FAST VERSION
+	
 
 # Class to emulate the YM2149 HW envelope generator
+# see http://www.cpcwiki.eu/index.php/Ym2149 for the FPGA logic
 class YmEnvelope():
-    # see http://www.cpcwiki.eu/index.php/Ym2149 for FPGA logic
 
     ENV_MASTER_CLOCK = 2000000
     ENV_CLOCK_DIVIDER = 8
@@ -345,8 +329,8 @@ class YmEnvelope():
     #-- 1 1 1 1  /___    
 
 	
-	# Envelopes could be implemented much faster as lookup tables.
-	# 64 entry tables set based on the envelope shape
+	# Envelopes can be implemented much faster as lookup tables.
+	# We use a 64 entry tables set based on the envelope shape (there are 16 possible envelope mode settings)
 	# with variants as:
 	# Ramp Up / Hold High
 	# Ramp Up / Hold Low
@@ -362,32 +346,27 @@ class YmEnvelope():
 	# Each update, add N envelope cycles to envelope counter
 	# if ELOOP: ECNT &= 63 else ECNT = MAX(ECNT,63)
 	# V = ETABLE[ECNT]
+
+    # This approach also opens up the possibility for digi drums, since they are effectively just attentuation tables too (just longer ones!)
 	
     def __init__(self):
-        self.reset()
+        self.__clock_cnt = 0    # clock cycle counter
 
-    # reset the chip logic state
-    def reset(self):
-        self.__rb = 0   # Envelope frequency, 8-bit fine adjustment
-        self.__rc = 0   # Envelope frequency, 8-bit rough adjustment   
-        self.__rd = 0   # shape of envelope (CONT|ATT|ALT|HOLD)
-
-        self.__clock_cnt = 0      # clock divider
-        self.__env_cnt = 0  # envelope counter (index into the table)
-
-        self.__env_table = []	# current envelope table
-
+        # Initialise the envelope shape tables
+        # YM envelopes are very basic and comprise 4 basic types of waveform ramp(up/down) hold(high/low)
         ramp_up = []
         ramp_dn = []
         hold_hi = []
         hold_lo = []
 
+        # populate these waveforms as 32 5-bit volume levels, where 0 is silent, 31 is full volume
         for x in xrange(0,32):
             ramp_up.append(x)
             ramp_dn.append(31-x)
             hold_hi.append(31)
             hold_lo.append(0)
             
+        # Now create each shape by copying two combinations of the above 4 shapes into 16 different 64-value arrays.
         self.__envelope_shapes = []
             
         def createShape(phase1, phase2):
@@ -418,6 +397,17 @@ class YmEnvelope():
         createShape(ramp_up, ramp_dn)
         createShape(ramp_up, hold_lo)
 
+        self.reset()
+
+    # reset the chip logic state
+    def reset(self):
+        self.__rb = 0   # Envelope frequency, 8-bit fine adjustment
+        self.__rc = 0   # Envelope frequency, 8-bit rough adjustment   
+        self.__rd = 0   # shape of envelope (CONT|ATT|ALT|HOLD)
+
+        self.__env_cnt = 0      # envelope period counter (index into the table)
+        self.__env_table = []	# current envelope shape table
+
         # initialise shape
         self.set_envelope_shape(self.__rd)
 
@@ -437,6 +427,7 @@ class YmEnvelope():
         else:
             self.__env_hold = False
 
+        # set the current envelope volume
         self.__env_volume = self.__env_table[0]
         print "  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) 
 
@@ -446,7 +437,7 @@ class YmEnvelope():
         self.__rb = lo
         self.__rc = hi
 
-
+    # get the current YM chip envelope frequency as a 16-bit interval/counter value
     def get_envelope_period(self):
         return self.__rc * 256 + self.__rb
 
@@ -460,9 +451,11 @@ class YmEnvelope():
     def tick(self, clocks):
 
         #print "tick(" + str(clocks) + ")"
+        # advance the clock cycles
         self.__clock_cnt += clocks
 
-        f = self.get_envelope_period() * ENV_CLOCK_DIVIDER
+        # get the currently set envelope frequency and scale up by the clock divider, since we're working in cpu clocks rather than envelope clocks
+        f = self.get_envelope_period() * self.ENV_CLOCK_DIVIDER
         #print " f=" + str(f)
 
         v = self.__env_table[self.__env_cnt]
@@ -751,7 +744,8 @@ class YmReader(object):
         sn_attn_latch = [ 0, 0, 0, 0 ]
         sn_tone_latch = [ 0, 0, 0, 0 ]
 
-        # my dump code
+        # YM stream processing code
+        # Scan the YM stream one frame at a time
         for i in xrange(cnt):
             s = "Frame="+'{:05d}'.format(i)+" "
 
@@ -894,9 +888,9 @@ class YmReader(object):
             def output_sn_tone(channel, tone):
 
                 if tone > 1023:
-                    print "SHITE"
+                    print "ERROR (output_sn_tone): tone > 1023"
                 if tone < 0:
-                    print "FUCK"
+                    print "ERROR (output_sn_tone): tone < 0"
                 r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
                 r_hi = (tone >> 4) & 63
 
