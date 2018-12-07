@@ -826,7 +826,7 @@ class YmReader(object):
 
                     sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
 
-                print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
+                print "  ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
 
                 hz_err = sn_freq - ym_freq
                 if hz_err > 2.0 or hz_err < -2.0:
@@ -888,9 +888,9 @@ class YmReader(object):
             def output_sn_tone(channel, tone):
 
                 if tone > 1023:
-                    print "ERROR (output_sn_tone): tone > 1023"
+                    print " ERROR (output_sn_tone): tone > 1023"
                 if tone < 0:
-                    print "ERROR (output_sn_tone): tone < 0"
+                    print " ERROR (output_sn_tone): tone < 0"
                 r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
                 r_hi = (tone >> 4) & 63
 
@@ -932,9 +932,14 @@ class YmReader(object):
 
             #------------------------------------------------
             # Conversion Logic
+            #------------------------------------------------
+
+            print "--- "		
+
+            #------------------------------------------------
             # extract the YM register values for this frame
             #------------------------------------------------
-            print "--- " + s			
+
             # volume attenuation level (if bit 4 is clear)
             ym_volume_a = get_register_byte(8) & 15
             ym_volume_b = get_register_byte(9) & 15
@@ -945,46 +950,7 @@ class YmReader(object):
             ym_envelope_b = get_register_byte( 9) & 16
             ym_envelope_c = get_register_byte(10) & 16
 
-            # if envelopes are not enabled use max volume
-            # not a great simulation, but prevents some audio being muted
-            if ENABLE_ENVELOPES == 0 and SIM_ENVELOPES == 1:
-                if ym_envelope_a:
-                    ym_volume_a = 15
-                if ym_envelope_b:
-                    ym_volume_b = 15
-                if ym_envelope_c:
-                    ym_volume_c = 15
-
-            
-            # count occurrences of envelopes being used
-            if ym_envelope_a or ym_envelope_b or ym_envelope_c:
-                ym_env_count += 1
-
-            # emulate the YM envelope logic if required
-            if (ENABLE_ENVELOPES):
-                # process envelopes
-                # first set the envelope frequency
-                self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
-
-                # next set the envelope shape, but only if it is set in the YM stream
-                # (since setting this register resets the envelope state)
-                ym_envelope_shape = get_register_byte(13)
-                if (ym_envelope_shape != 255):
-                    print 'setting envelope shape ' + format(ym_envelope_shape, '#004b')
-                    self.__ymenv.set_envelope_shape(ym_envelope_shape)
-
-                # use the envelope volume if M is set for any channel
-                if ym_envelope_a:
-                    ym_volume_a = self.__ymenv.get_envelope_volume() / 2
-                    print 'envelope on A'
-                if ym_envelope_b:
-                    print 'envelope on B'
-                    ym_volume_b = self.__ymenv.get_envelope_volume() / 2
-                if ym_envelope_c:
-                    print 'envelope on C'
-                    ym_volume_c = self.__ymenv.get_envelope_volume() / 2
-
- 
+            # Tone registers
             # Have to properly mask these registers
             # r1 bits 4-6 are used for TS info
             # r3 bits 4-5 are used for DD info
@@ -992,14 +958,39 @@ class YmReader(object):
             ym_tone_b = get_register_word(2) & 4095
             ym_tone_c = get_register_word(4) & 4095
 
+            # Noise register
             # R6 bits 5-6 are used for TP for TS setting
             ym_noise = get_register_byte(6) & 31
 
+            # envelope frequency register
+            ym_envelope_f = get_register_word(11)   
 
-            ym_envelope_f = get_register_word(11)   # envelope frequency register
+            # envelope shape register (YM format stores 255 if this register should not be updated this frame)
+            ym_envelope_shape = get_register_byte(13)
+
+            # mixer flag registers
+            # output is on when mix bit is clear. 
+            # we invert it though for easier code readibility 
+            ym_mixer = get_register_byte(7)
+            ym_mix_tone_a = (ym_mixer & (1<<0)) == 0
+            ym_mix_tone_b = (ym_mixer & (1<<1)) == 0
+            ym_mix_tone_c = (ym_mixer & (1<<2)) == 0
+
+            ym_mix_noise_a = (ym_mixer & (1<<3)) == 0
+            ym_mix_noise_b = (ym_mixer & (1<<4)) == 0
+            ym_mix_noise_c = (ym_mixer & (1<<5)) == 0
 
 
-            # YM file specific attributes (not YM2149 chip features)
+
+
+
+ 
+
+
+
+            #--------------------------------------------------------------------
+            # Process YM file-specific attributes (not YM2149 chip features)
+            #--------------------------------------------------------------------
             # digi drums - in YM format, DD triggers are encoded into bits 4+5 of R3
             # only 1 DD can be triggered per frame, on a specific voice
             # TS = Timer Synth
@@ -1015,7 +1006,7 @@ class YmReader(object):
             # the TIMER to first position (you must be VERY sound-chip specialist to hear the difference).
 
             if ts_on:
-                print "ERROR: Timer Synth Trigger - Not handled yet"
+                print " ERROR: Timer Synth Trigger - Not handled yet"
 
 
             # timer/sample rate encodings
@@ -1035,11 +1026,11 @@ class YmReader(object):
             # Handle DD frequency
             dd_freq = 0
             if dd_on:
-                print " dd_tp=" + str(dd_tp)
-                print " dd_tc=" + str(dd_tc)
+                print "  dd_tp=" + str(dd_tp)
+                print "  dd_tc=" + str(dd_tc)
 
                 if dd_tc == 0:
-                    print "ERROR: Digidrum TC value is 0 - unexpected & unhandled"
+                    print " ERROR: Digidrum TC value is 0 - unexpected & unhandled"
                 else:             
                     dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
 
@@ -1047,24 +1038,12 @@ class YmReader(object):
             ts_freq = 0
             if ts_on:
                 if ts_tc == 0:
-                    print "ERROR: Timer Synth TC value is 0 - unexpected & unhandled"
+                    print " ERROR: Timer Synth TC value is 0 - unexpected & unhandled"
                 else:
                     ts_freq = (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc
 
             # If a DD is triggered on a voice, the volume register for that channel
             # should be interpreted as a 5-bit sample number rather than a volume
-
-
-            # output is on when mix bit is clear. 
-            # we invert it though for easier code readibility 
-            ym_mixer = get_register_byte(7)
-            ym_mix_tone_a = (ym_mixer & (1<<0)) == 0
-            ym_mix_tone_b = (ym_mixer & (1<<1)) == 0
-            ym_mix_tone_c = (ym_mixer & (1<<2)) == 0
-
-            ym_mix_noise_a = (ym_mixer & (1<<3)) == 0
-            ym_mix_noise_b = (ym_mixer & (1<<4)) == 0
-            ym_mix_noise_c = (ym_mixer & (1<<5)) == 0
 
             # calculate some additional variables
             ym_tone_a_max = max(ym_tone_a_max, ym_tone_a)
@@ -1079,6 +1058,160 @@ class YmReader(object):
             ym_freq_b = get_ym_frequency(ym_tone_b)
             ym_freq_c = get_ym_frequency(ym_tone_c)
             
+
+
+
+            #------------------------------------------------
+            # show YM frame info
+            #------------------------------------------------
+
+            # pitch
+            s += ", Tone ["
+            s += " " + '{:6d}'.format( ym_tone_a )
+            s += " " + '{:6d}'.format( ym_tone_b )
+            s += " " + '{:6d}'.format( ym_tone_c )
+
+
+            # noise
+            #s += ", Noise"
+            s += ", " + '{:3d}'.format( ym_noise )
+            s += " ]"
+
+            # volume
+            s += ", Vol ["
+            s += " " + '{:2d}'.format( ym_volume_a )
+            s += " " + '{:2d}'.format( ym_volume_b )
+            s += " " + '{:2d}'.format( ym_volume_c )
+            s += " ]"
+
+            # mixer
+            m = get_register_byte(7)
+
+            # output is on when mix bit is clear
+            s += ", Tone Mix ["
+            s += " " + getregisterflag(m,0, "a", "-")
+            s += " " + getregisterflag(m,1, "b", "-")
+            s += " " + getregisterflag(m,2, "c", "-")
+            s += " ]"
+
+            s += ", Noise Mix ["
+            s += " " + getregisterflag(m,3, "a", "-")
+            s += " " + getregisterflag(m,4, "b", "-")
+            s += " " + getregisterflag(m,5, "c", "-")
+            s += " ]"
+            
+
+
+            # envelope
+            s += ", Env ["
+            s += " " + getregisterflag(get_register_byte( 8), 4, "-", "a")
+            s += " " + getregisterflag(get_register_byte( 9), 4, "-", "b")
+            s += " " + getregisterflag(get_register_byte(10), 4, "-", "c")
+            s += " ]"
+
+            # Envelope shape
+            env_shapes = [ "\\___", "\\___", "\\___", "\\___", "/___", "/___", "/___", "/___", "\\\\\\\\", "\\___", "\\/\\/", "\\---", "////", "/---", "/\\/\\", "/___"]
+
+
+            s += ", Env Shape ["
+            if ym_envelope_shape != 255:
+                s += " " + env_shapes[ym_envelope_shape & 15]
+            else:
+                s += " ----"
+            #s += " " + getregisterflag(ym_envelope_shape,2, "----", " ATT")
+            #s += " " + getregisterflag(ym_envelope_shape,1, "----", " ALT")
+            #s += " " + getregisterflag(ym_envelope_shape,0, "----", "HOLD")
+            s += " ]"
+
+            # Envelope frequency - this is the frequency that the counters will update
+            # and therefore the frequency that a CPU would have to simulate them for accurate sound
+            if ym_envelope_f == 0:
+                #print "WARNING: Envelope frequency is 0 - unexpected & unhandled"
+                # It's ok, happens when no envelope being used
+                ehz = 0
+            else:
+                ehz = (float(clock) / 8.0) / float(ym_envelope_f)
+            
+            s += ", Env Freq ["
+            s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
+            s += " ]"
+
+            ym_env_freq_min = min(ym_env_freq_min, ehz)
+            ym_env_freq_max = max(ym_env_freq_max, ehz)
+
+
+            # Digi drums extended info (not chip-related, YM format only)
+            if dd_on:
+                s += ", Digidrum ["
+                s += " " + str(dd_on)
+                s += " ]"
+
+                # Sample ID is whatever is in the volume register for the channel
+                s += ", Sample ["
+                s += " " +  '{:2d}'.format(get_register_byte(7+dd_on))
+                s += " ]"
+            
+                # Sample freq is whatever is in R14 (not sure what R15 is as DD2)
+                s += ", Sample Freq ["
+                s += " " +  '{:6d}'.format(dd_freq)
+                s += " ]"
+
+                ym_dd_freq_min = min(ym_dd_freq_min, dd_freq)
+                ym_dd_freq_max = max(ym_dd_freq_max, dd_freq)
+
+            print s  
+
+
+
+            #------------------------------------------------
+            # envelope processing
+            #------------------------------------------------
+
+
+
+            # Each frame, we'll process output in 2 steps
+            # 1. The tone & noise registers
+            # 2. The attenuation registers
+            # Attenuation can be sampled at a higher rate than 50Hz to enable sampling of envelopes/digi drums
+
+            # if envelopes are not enabled use max volume
+            # not a great simulation, but prevents some audio being muted
+            if ENABLE_ENVELOPES == 0 and SIM_ENVELOPES == 1:
+                if ym_envelope_a:
+                    ym_volume_a = 15
+                if ym_envelope_b:
+                    ym_volume_b = 15
+                if ym_envelope_c:
+                    ym_volume_c = 15
+
+            
+            # count occurrences of frames that are using envelopes 
+            if ym_envelope_a or ym_envelope_b or ym_envelope_c:
+                ym_env_count += 1
+
+            # emulate the YM envelope logic if required
+            if (ENABLE_ENVELOPES):
+                # process envelopes
+                # first set the envelope frequency
+                self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
+
+                # next set the envelope shape, but only if it is set in the YM stream
+                # (since setting this register resets the envelope state)
+
+                if (ym_envelope_shape != 255):
+                    print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
+                    self.__ymenv.set_envelope_shape(ym_envelope_shape)
+
+                # use the envelope volume if M is set for any channel
+                if ym_envelope_a:
+                    ym_volume_a = self.__ymenv.get_envelope_volume() / 2
+                    print '  envelope on A'
+                if ym_envelope_b:
+                    print '  envelope on B'
+                    ym_volume_b = self.__ymenv.get_envelope_volume() / 2
+                if ym_envelope_c:
+                    print '  envelope on C'
+                    ym_volume_c = self.__ymenv.get_envelope_volume() / 2            
  
             #------------------------------------------------
             # output VGM SN76489 equivalent data
@@ -1116,7 +1249,7 @@ class YmReader(object):
                 # average the volume based on number of active noise channels
                 noise_volume /= noise_active
 
-                print "OUTPUT NOISE! vol=" + str(noise_volume) + " ym_noise=" + str(ym_noise)          
+                print "  OUTPUT NOISE! vol=" + str(noise_volume) + " ym_noise=" + str(ym_noise)          
 
             #noise_active = 0 # HACK
 
@@ -1136,7 +1269,7 @@ class YmReader(object):
                 # adjust for periodic noise bass
                 if lo_count:
                     bass_active = True
-                    print " " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
+                    print "  " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
                     # mute channel 2
                     sn_attn_out[2] = 0
 
@@ -1157,7 +1290,7 @@ class YmReader(object):
                     # Swap channels according to bass preference
                     if bass_channel == 0:
                         # it's A
-                        print " Channel A -> Bass "                     
+                        print "  Channel A -> Bass "                     
 
                         sn_attn_out[0] = ym_volume_c
                         sn_attn_out[1] = ym_volume_b
@@ -1170,7 +1303,7 @@ class YmReader(object):
                     else:
                         if bass_channel == 1:
                             # it's B
-                            print " Channel B -> Bass "                     
+                            print "  Channel B -> Bass "                     
 
                             sn_attn_out[0] = ym_volume_a
                             sn_attn_out[1] = ym_volume_c
@@ -1182,7 +1315,7 @@ class YmReader(object):
 
                         else:
                             # it's C    
-                            print " Channel C -> Bass "                     
+                            print "  Channel C -> Bass "                     
 
                             sn_attn_out[0] = ym_volume_a
                             sn_attn_out[1] = ym_volume_b
@@ -1214,7 +1347,7 @@ class YmReader(object):
             if noise_active:
                 noise_freq = 0
                 if ym_noise == 0:
-                    print "ERROR: Noise is enabled at frequency 0 - unexpected"
+                    print " ERROR: Noise is enabled at frequency 0 - unexpected"
                 else:
                     noise_freq = float(clock) / (16.0 * ym_noise)
 
@@ -1222,10 +1355,10 @@ class YmReader(object):
                     ym_noise_max = max(ym_noise, ym_noise_max)
 
                 #snf = float(vgm_clock) / (16.0 * ym_noise)
-                print "noise_freq=" + str(noise_freq) + "Hz"
-                print "SN 0 = " + str(float(vgm_clock) / (16.0 * 16.0))
-                print "SN 1 = " + str(float(vgm_clock) / (16.0 * 32.0))
-                print "SN 2 = " + str(float(vgm_clock) / (16.0 * 64.0))
+                print "   noise_freq=" + str(noise_freq) + "Hz"
+                print "   SN 0 = " + str(float(vgm_clock) / (16.0 * 16.0))
+                print "   SN 1 = " + str(float(vgm_clock) / (16.0 * 32.0))
+                print "   SN 2 = " + str(float(vgm_clock) / (16.0 * 64.0))
                 
                 # SN internal clock is 1/16 of external clock
                 # white noise on the SN has 4 frequencies
@@ -1249,7 +1382,7 @@ class YmReader(object):
                         else:
                             sn_noise = 2
 
-                print 'sn_noise = ' + str(sn_noise)
+                print '   sn_noise = ' + str(sn_noise)
 
                 sn_attn_out[3] = noise_volume
                 sn_tone_out[3] = 4 + sn_noise # White noise, fixed low frequency (16 cycle)
@@ -1321,102 +1454,7 @@ class YmReader(object):
                     output_sn_volume(3, sn_attn_latch[3])
 
 
-            #------------------------------------------------
-            # show info
-            #------------------------------------------------
 
-            # pitch
-            s += ", Tone ["
-            s += " " + '{:6d}'.format( ym_tone_a )
-            s += " " + '{:6d}'.format( ym_tone_b )
-            s += " " + '{:6d}'.format( ym_tone_c )
-
-
-            # noise
-            #s += ", Noise"
-            s += ", " + '{:3d}'.format( ym_noise )
-            s += " ]"
-
-            # volume
-            s += ", Vol ["
-            s += " " + '{:2d}'.format( ym_volume_a )
-            s += " " + '{:2d}'.format( ym_volume_b )
-            s += " " + '{:2d}'.format( ym_volume_c )
-            s += " ]"
-
-            # mixer
-            m = get_register_byte(7)
-
-            # output is on when mix bit is clear
-            s += ", Tone Mix ["
-            s += " " + getregisterflag(m,0, "a", "-")
-            s += " " + getregisterflag(m,1, "b", "-")
-            s += " " + getregisterflag(m,2, "c", "-")
-            s += " ]"
-
-            s += ", Noise Mix ["
-            s += " " + getregisterflag(m,3, "a", "-")
-            s += " " + getregisterflag(m,4, "b", "-")
-            s += " " + getregisterflag(m,5, "c", "-")
-            s += " ]"
-            
-
-
-            # envelope
-            s += ", Env ["
-            s += " " + getregisterflag(get_register_byte( 8), 4, "-", "a")
-            s += " " + getregisterflag(get_register_byte( 9), 4, "-", "b")
-            s += " " + getregisterflag(get_register_byte(10), 4, "-", "c")
-            s += " ]"
-
-            # Envelope shape
-            m = get_register_byte(13)  
-
-
-            s += ", Env Shape ["
-            s += " " + getregisterflag(m,3, "----", "CONT")
-            s += " " + getregisterflag(m,2, "----", " ATT")
-            s += " " + getregisterflag(m,1, "----", " ALT")
-            s += " " + getregisterflag(m,0, "----", "HOLD")
-            s += " ]"
-
-            # Envelope frequency - this is the frequency that the counters will update
-            # and therefore the frequency that a CPU would have to simulate them for accurate sound
-            if ym_envelope_f == 0:
-                #print "WARNING: Envelope frequency is 0 - unexpected & unhandled"
-                # It's ok, happens when no envelope being used
-                ehz = 0
-            else:
-                ehz = float(ym_envelope_f) #(float(clock) / 8.0) / float(ym_envelope_f)
-            
-            s += ", Env Freq ["
-            s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
-            s += " ]"
-
-            ym_env_freq_min = min(ym_env_freq_min, ehz)
-            ym_env_freq_max = max(ym_env_freq_max, ehz)
-
-
-            # Digi drums extended info (not chip-related, YM format only)
-            if dd_on:
-                s += ", Digidrum ["
-                s += " " + str(dd_on)
-                s += " ]"
-
-                # Sample ID is whatever is in the volume register for the channel
-                s += ", Sample ["
-                s += " " +  '{:2d}'.format(get_register_byte(7+dd_on))
-                s += " ]"
-            
-                # Sample freq is whatever is in R14 (not sure what R15 is as DD2)
-                s += ", Sample Freq ["
-                s += " " +  '{:6d}'.format(dd_freq)
-                s += " ]"
-
-                ym_dd_freq_min = min(ym_dd_freq_min, dd_freq)
-                ym_dd_freq_max = max(ym_dd_freq_max, dd_freq)
-
-            print s  
 
             # now output to vgm
             # so, for a higher res output we could output the volume here.
