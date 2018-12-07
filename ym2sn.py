@@ -22,6 +22,8 @@ else:
     HACK_TIME = 0
 
 ENABLE_NOISE = True
+ENABLE_BASS_TONES = True
+OPTIMIZE_VGM = True
 
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
@@ -1234,26 +1236,37 @@ class YmReader(object):
             # the calculate a volume which is the average level
             noise_volume = 0
             noise_active = 0
-            if ENABLE_NOISE and (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
+            if ENABLE_NOISE:
+                if (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
 
-                if ym_mix_noise_a: # and not ym_mix_tone_a:
-                    noise_volume += ym_volume_a
-                    noise_active += 1
-                if ym_mix_noise_b: # and not ym_mix_tone_b:
-                    noise_volume += ym_volume_b
-                    noise_active += 1
-                if ym_mix_noise_c: # and not ym_mix_tone_c:
-                    noise_volume += ym_volume_c
-                    noise_active += 1
+                    if ym_mix_noise_a: # and not ym_mix_tone_a:
+                        noise_volume += ym_volume_a
+                        noise_active += 1
+                    if ym_mix_noise_b: # and not ym_mix_tone_b:
+                        noise_volume += ym_volume_b
+                        noise_active += 1
+                    if ym_mix_noise_c: # and not ym_mix_tone_c:
+                        noise_volume += ym_volume_c
+                        noise_active += 1
 
-                # average the volume based on number of active noise channels
-                noise_volume /= noise_active
+                    # average the volume based on number of active noise channels
+                    noise_volume /= noise_active
 
-                print "  OUTPUT NOISE! vol=" + str(noise_volume) + " ym_noise=" + str(ym_noise)          
+                    print "  OUTPUT NOISE! vol=" + str(noise_volume) + " ym_noise=" + str(ym_noise)          
 
             #noise_active = 0 # HACK
 
-            ENABLE_BASS_TONES = True
+
+            #--------------------------------------------------
+            # Process low frequencies
+            #--------------------------------------------------
+
+            # rather than send data to exact channels
+            # create maps, this way we can track which YM channel maps to which SN channel
+            channel_a_map = 0
+            channel_b_map = 1
+            channel_c_map = 2
+
             bass_active = False
             if ENABLE_BASS_TONES and not noise_active:
 
@@ -1329,6 +1342,7 @@ class YmReader(object):
 
             # Apply mixer settings (will mute channels when non-zero)
             # TODO: rename _mix_ to _mute_
+            # BUG BUG BUG - wont work if we've switched channels cause bass.
             if not ym_mix_tone_a:
                 sn_attn_out[0] = 0
             if not ym_mix_tone_b:
@@ -1394,29 +1408,11 @@ class YmReader(object):
                 else:
                     sn_attn_out[3] = 0 # turn off noise
                 
-
+            #-------------------------------------------------
             # output the final data to VGM
-            NO_DIFF = False
-
-            if NO_DIFF:
-                output_sn_tone(0, sn_tone_out[0])
-                output_sn_tone(1, sn_tone_out[0])
-                output_sn_tone(2, sn_tone_out[0])
-                output_sn_noise(sn_tone_out[3])
-
-                output_sn_volume(0, sn_attn_out[0])
-                output_sn_volume(1, sn_attn_out[1])
-                output_sn_volume(2, sn_attn_out[2])
-                output_sn_volume(3, sn_attn_out[3])
-
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-
-            else:
-                    
+            #-------------------------------------------------
+            if OPTIMIZE_VGM:
+                # only output register values that have changed since last frame
                 if sn_tone_out[0] != sn_tone_latch[0]:
                     sn_tone_latch[0] = sn_tone_out[0]
                     output_sn_tone(0, sn_tone_latch[0])
@@ -1452,6 +1448,24 @@ class YmReader(object):
                 if sn_attn_out[3] != sn_attn_latch[3]:
                     sn_attn_latch[3] = sn_attn_out[3]              
                     output_sn_volume(3, sn_attn_latch[3])
+
+            else:                
+                output_sn_tone(0, sn_tone_out[0])
+                output_sn_tone(1, sn_tone_out[0])
+                output_sn_tone(2, sn_tone_out[0])
+                output_sn_noise(sn_tone_out[3])
+
+                output_sn_volume(0, sn_attn_out[0])
+                output_sn_volume(1, sn_attn_out[1])
+                output_sn_volume(2, sn_attn_out[2])
+                output_sn_volume(3, sn_attn_out[3])
+
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+                #output_sn_volume(3, 15)
+
 
 
 
