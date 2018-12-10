@@ -1188,6 +1188,7 @@ class YmReader(object):
             # Process noise mixers
             #--------------------------------------------------
             # determine how many channels have the noise mixer enabled
+            # noise & tone mixers are separate
             noise_active = 0
             if ENABLE_NOISE:
                 if (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
@@ -1409,20 +1410,11 @@ class YmReader(object):
                         ym_volume_c = 15
 
 
-            #------------------------------------------------
-            # Apply mixer settings (will mute channels when non-zero)
-            #------------------------------------------------
-            # TODO: rename _mix_ to _mute_
-            # BUG BUG BUG - wont work if we've switched channels cause bass.
-            if not ym_mix_tone_a:
-                ym_volume_a = 0
-            if not ym_mix_tone_b:
-                ym_volume_b = 0
-            if not ym_mix_tone_c:
-                ym_volume_c = 0
+
 
             #------------------------------------------------
             # noise volume calculation
+            # noise mixer is independent of tone mixer
             #------------------------------------------------
 
             # determine which channels have the noise mixer enabled
@@ -1440,22 +1432,38 @@ class YmReader(object):
                 # average the volume based on number of active noise channels
                 noise_volume /= noise_active
 
+
+            #------------------------------------------------
+            # Apply tone mixer settings (will mute channels if not enabled)
+            #------------------------------------------------
+
+            if not ym_mix_tone_a:
+                ym_volume_a = 0
+            if not ym_mix_tone_b:
+                ym_volume_b = 0
+            if not ym_mix_tone_c:
+                ym_volume_c = 0
+
             #------------------------------------------------
             # final mix to SN (for tones, bass & noise)
             #------------------------------------------------
 
+            # tones first
             sn_attn_out[channel_map_a] = ym_volume_a
             sn_attn_out[channel_map_b] = ym_volume_b
             sn_attn_out[channel_map_c] = ym_volume_c
 
-
+            # then noise or bass
             if noise_active:
+                # active noise overrides bass
                 sn_attn_out[3] = noise_volume
                 if bass_active:
                     sn_attn_out[2] = 0 # turn off tone2 while noise is playing if bass is active
             else:
+                # no noise active, so check if bass is active (since thats emulated on SN noise channel using tuned periodic noise)
                 if bass_active:
-                    bass_volume = ym_volume_a
+                    # we need to determine the volume of the simulated bass so we can set the correct volume for the SN noise channel
+                    bass_volume = ym_volume_a   
                     # no noise, just bass. turn off tone2, apply bass volume to channel 3  
                     if bass_channel == 1: # b
                         bass_volume = ym_volume_b
@@ -1465,7 +1473,7 @@ class YmReader(object):
 
                     # output bass settings to SN
                     sn_attn_out[3] = bass_volume
-                    sn_attn_out[2] = 0 # turn off tone2 while bass is playing
+                    sn_attn_out[2] = 0 # turn off tone2 while bass effect is playing
                     
                 else:
                     # no noise, no bass, so just turn off noise channel
