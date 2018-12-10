@@ -1165,55 +1165,7 @@ class YmReader(object):
 
 
 
-            #------------------------------------------------
-            # envelope processing
-            #------------------------------------------------
-
-
-
-            # Each frame, we'll process output in 2 steps
-            # 1. The tone & noise registers
-            # 2. The attenuation registers
-            # Attenuation can be sampled at a higher rate than 50Hz to enable sampling of envelopes/digi drums
-
-            # if envelopes are not enabled use max volume
-            # not a great simulation, but prevents some audio being muted
-            if ENABLE_ENVELOPES == 0 and SIM_ENVELOPES == 1:
-                if ym_envelope_a:
-                    ym_volume_a = 15
-                if ym_envelope_b:
-                    ym_volume_b = 15
-                if ym_envelope_c:
-                    ym_volume_c = 15
-
-            
-            # count occurrences of frames that are using envelopes 
-            if ym_envelope_a or ym_envelope_b or ym_envelope_c:
-                ym_env_count += 1
-
-            # emulate the YM envelope logic if required
-            if (ENABLE_ENVELOPES):
-                # process envelopes
-                # first set the envelope frequency
-                self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
-
-                # next set the envelope shape, but only if it is set in the YM stream
-                # (since setting this register resets the envelope state)
-
-                if (ym_envelope_shape != 255):
-                    print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
-                    self.__ymenv.set_envelope_shape(ym_envelope_shape)
-
-                # use the envelope volume if M is set for any channel
-                if ym_envelope_a:
-                    ym_volume_a = self.__ymenv.get_envelope_volume() / 2
-                    print '  envelope on A'
-                if ym_envelope_b:
-                    print '  envelope on B'
-                    ym_volume_b = self.__ymenv.get_envelope_volume() / 2
-                if ym_envelope_c:
-                    print '  envelope on C'
-                    ym_volume_c = self.__ymenv.get_envelope_volume() / 2            
+        
  
             #------------------------------------------------
             # output VGM SN76489 equivalent data
@@ -1232,42 +1184,43 @@ class YmReader(object):
             sn_tone_out[1] = ym_to_sn(ym_tone_b)
             sn_tone_out[2] = ym_to_sn(ym_tone_c)
 
-            # first, determine which channels have the noise mixer enabled
-            # the calculate a volume which is the average level
-            noise_volume = 0
+            #--------------------------------------------------
+            # Process noise mixers
+            #--------------------------------------------------
+            # determine how many channels have the noise mixer enabled
             noise_active = 0
             if ENABLE_NOISE:
                 if (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
 
                     if ym_mix_noise_a: # and not ym_mix_tone_a:
-                        noise_volume += ym_volume_a
                         noise_active += 1
                     if ym_mix_noise_b: # and not ym_mix_tone_b:
-                        noise_volume += ym_volume_b
                         noise_active += 1
                     if ym_mix_noise_c: # and not ym_mix_tone_c:
-                        noise_volume += ym_volume_c
                         noise_active += 1
 
-                    # average the volume based on number of active noise channels
-                    noise_volume /= noise_active
-
-                    print "  OUTPUT NOISE! vol=" + str(noise_volume) + " ym_noise=" + str(ym_noise)          
+                    print "  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise)          
 
             #noise_active = 0 # HACK
 
 
             #--------------------------------------------------
-            # Process low frequencies
+            # Process tones 
             #--------------------------------------------------
 
-            # rather than send data to exact channels
-            # create maps, this way we can track which YM channel maps to which SN channel
-            channel_a_map = 0
-            channel_b_map = 1
-            channel_c_map = 2
+            # rather than send data to exact channels we
+            # create maps, this way we can track which YM tone channel maps to which SN tone channel, since we might switch some if bass tones are present
+            channel_map_a = 0
+            channel_map_b = 1
+            channel_map_c = 2
 
+            # next, take a look at the channel frequencies, if any are too low for the SN to play
+            # we can swap one channel over to a periodic noise sound to simulate the bass frequency we need.
+            # NOTE: since we are sharing noise channel on SN with periodic noise, the noise takes priority over bass, but we still do the bass
+            # processing so that theres continuity of the bass effect (otherwise when we switch to a noise sound, channel 2 would become audible, but at a higher frequency)
             bass_active = False
+            bass_channel = 0 # the channel that bass is active on (0=a 1=b 2=c)
+
             if ENABLE_BASS_TONES and not noise_active:
 
                 lo_count = 0
@@ -1283,10 +1236,6 @@ class YmReader(object):
                 if lo_count:
                     bass_active = True
                     print "  " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
-                    # mute channel 2
-                    sn_attn_out[2] = 0
-
-
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
@@ -1305,22 +1254,24 @@ class YmReader(object):
                         # it's A
                         print "  Channel A -> Bass "                     
 
-                        sn_attn_out[0] = ym_volume_c
-                        sn_attn_out[1] = ym_volume_b
-                        sn_attn_out[3] = ym_volume_a
+                        channel_map_a = 2
+                        channel_map_b = 1
+                        channel_map_c = 0
 
                         sn_tone_out[0] = ym_to_sn(ym_tone_c)
                         sn_tone_out[1] = ym_to_sn(ym_tone_b)
                         sn_tone_out[2] = ym_to_sn(ym_tone_a, True)
+
+
 
                     else:
                         if bass_channel == 1:
                             # it's B
                             print "  Channel B -> Bass "                     
 
-                            sn_attn_out[0] = ym_volume_a
-                            sn_attn_out[1] = ym_volume_c
-                            sn_attn_out[3] = ym_volume_b
+                            channel_map_a = 0
+                            channel_map_b = 2
+                            channel_map_c = 1
 
                             sn_tone_out[0] = ym_to_sn(ym_tone_a)
                             sn_tone_out[1] = ym_to_sn(ym_tone_c)
@@ -1330,33 +1281,22 @@ class YmReader(object):
                             # it's C    
                             print "  Channel C -> Bass "                     
 
-                            sn_attn_out[0] = ym_volume_a
-                            sn_attn_out[1] = ym_volume_b
-                            sn_attn_out[3] = ym_volume_c
+                            channel_map_a = 0
+                            channel_map_b = 1
+                            channel_map_c = 2
 
                             sn_tone_out[0] = ym_to_sn(ym_tone_a)
                             sn_tone_out[1] = ym_to_sn(ym_tone_b)
                             sn_tone_out[2] = ym_to_sn(ym_tone_c, True)
 
-                           
-
-            # Apply mixer settings (will mute channels when non-zero)
-            # TODO: rename _mix_ to _mute_
-            # BUG BUG BUG - wont work if we've switched channels cause bass.
-            if not ym_mix_tone_a:
-                sn_attn_out[0] = 0
-            if not ym_mix_tone_b:
-                sn_attn_out[1] = 0
-            if not ym_mix_tone_c:
-                sn_attn_out[2] = 0
-                
-            # handle noise. this will be interesting!
-            # noise output will override any bass tones
-            # TODO: detect if bass tone playing as well, and dont do bass adjustment if so
+                     
 
 
 
 
+            #--------------------------------------------------
+            # Process noise tones
+            #--------------------------------------------------
 
             if noise_active:
                 noise_freq = 0
@@ -1398,16 +1338,141 @@ class YmReader(object):
 
                 print '   sn_noise = ' + str(sn_noise)
 
-                sn_attn_out[3] = noise_volume
+
                 sn_tone_out[3] = 4 + sn_noise # White noise, fixed low frequency (16 cycle)
                 # most tunes dont seem to change the noise frequency much
             else:
                 if bass_active:
-                    sn_attn_out[2] = 0 # turn off tone2
                     sn_tone_out[3] = 3 # Periodic noise
+
+            #--------------------------------------------------
+            # Process volumes
+            #--------------------------------------------------
+
+            # update envelopes
+            # apply volumes to mapped channels as per mixer, and envelopes
+            # compute noise volume also, to include envelopes mix
+            # do these in a loop based on envelope sampling rate (default 50Hz)
+
+
+            #------------------------------------------------
+            # envelope processing
+            #------------------------------------------------
+
+            # prior to envelope processing, we have the ym_volumes for each channel as output per frame
+            # envelopes override these.
+
+            # Each frame, we'll process output in 2 steps
+            # 1. The tone & noise registers
+            # 2. The attenuation registers
+            # Attenuation can be sampled at a higher rate than 50Hz to enable sampling of envelopes/digi drums
+
+
+
+            
+            # count occurrences of frames that are using envelopes 
+            if ym_envelope_a or ym_envelope_b or ym_envelope_c:
+                ym_env_count += 1
+
+            # emulate the YM envelope logic if required
+            if (ENABLE_ENVELOPES):
+                # process envelopes
+                # first set the envelope frequency
+                self.__ymenv.set_envelope_freq(get_register_byte(12), get_register_byte(11))
+
+                # next set the envelope shape, but only if it is set in the YM stream
+                # (since setting this register resets the envelope state)
+
+                if (ym_envelope_shape != 255):
+                    print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
+                    self.__ymenv.set_envelope_shape(ym_envelope_shape)
+
+                # use the envelope volume if M is set for any channel
+                if ym_envelope_a:
+                    ym_volume_a = self.__ymenv.get_envelope_volume() / 2
+                    print '  envelope on A'
+                if ym_envelope_b:
+                    print '  envelope on B'
+                    ym_volume_b = self.__ymenv.get_envelope_volume() / 2
+                if ym_envelope_c:
+                    print '  envelope on C'
+                    ym_volume_c = self.__ymenv.get_envelope_volume() / 2    
+            else:
+                # if envelopes are not enabled and we want to simulate envelopes, just use max volume
+                # it's not a great simulation, but prevents some audio being muted
+                if SIM_ENVELOPES == 1:
+                    if ym_envelope_a:
+                        ym_volume_a = 15
+                    if ym_envelope_b:
+                        ym_volume_b = 15
+                    if ym_envelope_c:
+                        ym_volume_c = 15
+
+
+            #------------------------------------------------
+            # Apply mixer settings (will mute channels when non-zero)
+            #------------------------------------------------
+            # TODO: rename _mix_ to _mute_
+            # BUG BUG BUG - wont work if we've switched channels cause bass.
+            if not ym_mix_tone_a:
+                ym_volume_a = 0
+            if not ym_mix_tone_b:
+                ym_volume_b = 0
+            if not ym_mix_tone_c:
+                ym_volume_c = 0
+
+            #------------------------------------------------
+            # noise volume calculation
+            #------------------------------------------------
+
+            # determine which channels have the noise mixer enabled
+            # then calculate a volume which is the average level
+            noise_volume = 0
+            if ENABLE_NOISE and noise_active:
+
+                if ym_mix_noise_a: # and not ym_mix_tone_a:
+                    noise_volume += ym_volume_a
+                if ym_mix_noise_b: # and not ym_mix_tone_b:
+                    noise_volume += ym_volume_b
+                if ym_mix_noise_c: # and not ym_mix_tone_c:
+                    noise_volume += ym_volume_c
+
+                # average the volume based on number of active noise channels
+                noise_volume /= noise_active
+
+            #------------------------------------------------
+            # final mix to SN (for tones, bass & noise)
+            #------------------------------------------------
+
+            sn_attn_out[channel_map_a] = ym_volume_a
+            sn_attn_out[channel_map_b] = ym_volume_b
+            sn_attn_out[channel_map_c] = ym_volume_c
+
+
+            if noise_active:
+                sn_attn_out[3] = noise_volume
+                if bass_active:
+                    sn_attn_out[2] = 0 # turn off tone2 while noise is playing if bass is active
+            else:
+                if bass_active:
+                    bass_volume = ym_volume_a
+                    # no noise, just bass. turn off tone2, apply bass volume to channel 3  
+                    if bass_channel == 1: # b
+                        bass_volume = ym_volume_b
+                    else:
+                        if bass_channel == 2: # c
+                            bass_volume = ym_volume_c
+
+                    # output bass settings to SN
+                    sn_attn_out[3] = bass_volume
+                    sn_attn_out[2] = 0 # turn off tone2 while bass is playing
+                    
                 else:
-                    sn_attn_out[3] = 0 # turn off noise
-                
+                    # no noise, no bass, so just turn off noise channel
+                    sn_attn_out[3] = 0
+
+
+
             #-------------------------------------------------
             # output the final data to VGM
             #-------------------------------------------------
