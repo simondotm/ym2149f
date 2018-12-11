@@ -25,6 +25,13 @@ ENABLE_NOISE = True
 ENABLE_BASS_TONES = True
 OPTIMIZE_VGM = True
 
+FILTER_CHANNEL_A = False
+FILTER_CHANNEL_B = True
+FILTER_CHANNEL_C = True
+
+
+SAMPLE_RATE = 22050 # 50
+
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
 # R02 = Channel B Pitch LO (8 bits)
@@ -978,6 +985,15 @@ class YmReader(object):
             ym_mix_tone_b = (ym_mixer & (1<<1)) == 0
             ym_mix_tone_c = (ym_mixer & (1<<2)) == 0
 
+            if False:   # does not work
+                if FILTER_CHANNEL_A:
+                    ym_mix_tone_a = 0
+                if FILTER_CHANNEL_B:
+                    ym_mix_tone_b = 0
+                if FILTER_CHANNEL_C:
+                    ym_mix_tone_c = 0
+
+
             ym_mix_noise_a = (ym_mixer & (1<<3)) == 0
             ym_mix_noise_b = (ym_mixer & (1<<4)) == 0
             ym_mix_noise_c = (ym_mixer & (1<<5)) == 0
@@ -1225,11 +1241,11 @@ class YmReader(object):
             if ENABLE_BASS_TONES and not noise_active:
 
                 lo_count = 0
-                if ym_freq_a < sn_freq_lo:
+                if ym_mix_tone_a and (ym_freq_a < sn_freq_lo):
                     lo_count += 1
-                if ym_freq_b < sn_freq_lo:
+                if ym_mix_tone_b and (ym_freq_b < sn_freq_lo):
                     lo_count += 1
-                if ym_freq_c < sn_freq_lo:
+                if ym_mix_tone_c and (ym_freq_c < sn_freq_lo):
                     lo_count += 1
                     
                 # if at least one channel is an out of range frequency
@@ -1240,12 +1256,19 @@ class YmReader(object):
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
-                    bass_channel = 2
-                    if ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c:
+                    
+                    #bass_channel = 2
+                    if ym_mix_tone_a and (ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c):
                         bass_channel = 0
                     else:
-                        if ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c:
+                        if ym_mix_tone_b and (ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c):
                             bass_channel = 1
+                        else:
+                            if ym_mix_tone_c and (ym_freq_c < ym_freq_a and ym_freq_c < ym_freq_b):
+                                bass_channel = 2
+                            else:
+                                print " ERROR: no bass channel assigned - should not happen!"
+
 
                     if (FORCE_BASS_CHANNEL >= 0):
                         bass_channel = FORCE_BASS_CHANNEL
@@ -1368,12 +1391,12 @@ class YmReader(object):
             # 2. The attenuation registers
             # Attenuation can be sampled at a higher rate than 50Hz to enable sampling of envelopes/digi drums
 
-
-
-            
             # count occurrences of frames that are using envelopes 
             if ym_envelope_a or ym_envelope_b or ym_envelope_c:
                 ym_env_count += 1
+
+
+
 
             # emulate the YM envelope logic if required
             if (ENABLE_ENVELOPES):
@@ -1388,177 +1411,193 @@ class YmReader(object):
                     print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
                     self.__ymenv.set_envelope_shape(ym_envelope_shape)
 
-                # use the envelope volume if M is set for any channel
-                if ym_envelope_a:
-                    ym_volume_a = self.__ymenv.get_envelope_volume() / 2
-                    print '  envelope on A'
-                if ym_envelope_b:
-                    print '  envelope on B'
-                    ym_volume_b = self.__ymenv.get_envelope_volume() / 2
-                if ym_envelope_c:
-                    print '  envelope on C'
-                    ym_volume_c = self.__ymenv.get_envelope_volume() / 2    
-            else:
-                # if envelopes are not enabled and we want to simulate envelopes, just use max volume
-                # it's not a great simulation, but prevents some audio being muted
-                if SIM_ENVELOPES == 1:
-                    if ym_envelope_a:
-                        ym_volume_a = 15
-                    if ym_envelope_b:
-                        ym_volume_b = 15
-                    if ym_envelope_c:
-                        ym_volume_c = 15
+            # Now we sample the volume repeatedly at the rate given. This has the effect of simulating the envelopes at a better resolution.
+            sample_rate = 1 # 441 # / SAMPLE_RATE # 63 # 700Hz
+            sample_interval = 882 / sample_rate
+            for sample_loops in xrange(0,sample_rate):
+            
 
-
-
-
-            #------------------------------------------------
-            # noise volume calculation
-            # noise mixer is independent of tone mixer
-            #------------------------------------------------
-
-            # determine which channels have the noise mixer enabled
-            # then calculate a volume which is the average level
-            noise_volume = 0
-            if ENABLE_NOISE and noise_active:
-
-                if ym_mix_noise_a: # and not ym_mix_tone_a:
-                    noise_volume += ym_volume_a
-                if ym_mix_noise_b: # and not ym_mix_tone_b:
-                    noise_volume += ym_volume_b
-                if ym_mix_noise_c: # and not ym_mix_tone_c:
-                    noise_volume += ym_volume_c
-
-                # average the volume based on number of active noise channels
-                noise_volume /= noise_active
-
-
-            #------------------------------------------------
-            # Apply tone mixer settings (will mute channels if not enabled)
-            #------------------------------------------------
-
-            if not ym_mix_tone_a:
-                ym_volume_a = 0
-            if not ym_mix_tone_b:
-                ym_volume_b = 0
-            if not ym_mix_tone_c:
-                ym_volume_c = 0
-
-            #------------------------------------------------
-            # final mix to SN (for tones, bass & noise)
-            #------------------------------------------------
-
-            # tones first
-            sn_attn_out[channel_map_a] = ym_volume_a
-            sn_attn_out[channel_map_b] = ym_volume_b
-            sn_attn_out[channel_map_c] = ym_volume_c
-
-            # then noise or bass
-            if noise_active:
-                # active noise overrides bass
-                sn_attn_out[3] = noise_volume
-                if bass_active:
-                    sn_attn_out[2] = 0 # turn off tone2 while noise is playing if bass is active
-            else:
-                # no noise active, so check if bass is active (since thats emulated on SN noise channel using tuned periodic noise)
-                if bass_active:
-                    # we need to determine the volume of the simulated bass so we can set the correct volume for the SN noise channel
-                    bass_volume = ym_volume_a   
-                    # no noise, just bass. turn off tone2, apply bass volume to channel 3  
-                    if bass_channel == 1: # b
-                        bass_volume = ym_volume_b
-                    else:
-                        if bass_channel == 2: # c
-                            bass_volume = ym_volume_c
-
-                    # output bass settings to SN
-                    sn_attn_out[3] = bass_volume
-                    sn_attn_out[2] = 0 # turn off tone2 while bass effect is playing
-                    
-                else:
-                    # no noise, no bass, so just turn off noise channel
-                    sn_attn_out[3] = 0
-
-
-
-            #-------------------------------------------------
-            # output the final data to VGM
-            #-------------------------------------------------
-            if OPTIMIZE_VGM:
-                # only output register values that have changed since last frame
-                if sn_tone_out[0] != sn_tone_latch[0]:
-                    sn_tone_latch[0] = sn_tone_out[0]
-                    output_sn_tone(0, sn_tone_latch[0])
-
-                if sn_tone_out[1] != sn_tone_latch[1]:
-                    sn_tone_latch[1] = sn_tone_out[1]              
-                    output_sn_tone(1, sn_tone_latch[1])
-
-                if sn_tone_out[2] != sn_tone_latch[2]:
-                    sn_tone_latch[2] = sn_tone_out[2]              
-                    output_sn_tone(2, sn_tone_latch[2])
-
-                # for the noise channel, only output register writes
-                # if the noise tone has changed, so that we dont unnecessarily
-                # reset the LSFR
-                if sn_tone_out[3] != sn_tone_latch[3]:
-                    sn_tone_latch[3] = sn_tone_out[3]
-                    output_sn_noise(sn_tone_latch[3])
-
-                # volumes
-                if sn_attn_out[0] != sn_attn_latch[0]:
-                    sn_attn_latch[0] = sn_attn_out[0]              
-                    output_sn_volume(0, sn_attn_latch[0])
-                    
-                if sn_attn_out[1] != sn_attn_latch[1]:
-                    sn_attn_latch[1] = sn_attn_out[1]              
-                    output_sn_volume(1, sn_attn_latch[1])
-
-                if sn_attn_out[2] != sn_attn_latch[2]:
-                    sn_attn_latch[2] = sn_attn_out[2]              
-                    output_sn_volume(2, sn_attn_latch[2])
-
-                if sn_attn_out[3] != sn_attn_latch[3]:
-                    sn_attn_latch[3] = sn_attn_out[3]              
-                    output_sn_volume(3, sn_attn_latch[3])
-
-            else:                
-                output_sn_tone(0, sn_tone_out[0])
-                output_sn_tone(1, sn_tone_out[0])
-                output_sn_tone(2, sn_tone_out[0])
-                output_sn_noise(sn_tone_out[3])
-
-                output_sn_volume(0, sn_attn_out[0])
-                output_sn_volume(1, sn_attn_out[1])
-                output_sn_volume(2, sn_attn_out[2])
-                output_sn_volume(3, sn_attn_out[3])
-
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-                #output_sn_volume(3, 15)
-
-
-
-
-
-            # now output to vgm
-            # so, for a higher res output we could output the volume here.
-
-            if False and ENABLE_ENVELOPES:
-
-                for n in xrange(882):
-                    # update the envelope cpu emulation
-                    self.__ymenv.tick( self.__header['chip_clock'] / 44100 )
-                    vgm_stream.extend( struct.pack('B', 0x61) ) 
-                    vgm_stream.extend( struct.pack('B', 0x01) ) 
-                    vgm_stream.extend( struct.pack('B', 0x00) ) 
-            else:
                 if (ENABLE_ENVELOPES):
-                    # update the envelope cpu emulation
-                    self.__ymenv.tick( self.__header['chip_clock'] / 50 )
-                vgm_stream.extend( struct.pack('B', 0x63) ) # WAIT50, or 882 samples (44100/50), short for 0x61 0x72 0x03
+                    # use the envelope volume if M is set for any channel
+                    if ym_envelope_a:
+                        ym_volume_a = self.__ymenv.get_envelope_volume() / 2
+                        print '  envelope on A'
+                    if ym_envelope_b:
+                        print '  envelope on B'
+                        ym_volume_b = self.__ymenv.get_envelope_volume() / 2
+                    if ym_envelope_c:
+                        print '  envelope on C'
+                        ym_volume_c = self.__ymenv.get_envelope_volume() / 2    
+                else:
+                    # if envelopes are not enabled and we want to simulate envelopes, just use max volume
+                    # it's not a great simulation, but prevents some audio being muted
+                    if SIM_ENVELOPES == 1:
+                        if ym_envelope_a:
+                            ym_volume_a = 15
+                        if ym_envelope_b:
+                            ym_volume_b = 15
+                        if ym_envelope_c:
+                            ym_volume_c = 15
+
+
+
+
+                #------------------------------------------------
+                # noise volume calculation
+                # noise mixer is independent of tone mixer
+                #------------------------------------------------
+
+                # determine which channels have the noise mixer enabled
+                # then calculate a volume which is the average level
+                noise_volume = 0
+                if ENABLE_NOISE and noise_active:
+
+                    if ym_mix_noise_a: # and not ym_mix_tone_a:
+                        noise_volume += ym_volume_a
+                    if ym_mix_noise_b: # and not ym_mix_tone_b:
+                        noise_volume += ym_volume_b
+                    if ym_mix_noise_c: # and not ym_mix_tone_c:
+                        noise_volume += ym_volume_c
+
+                    # average the volume based on number of active noise channels
+                    noise_volume /= noise_active
+
+
+                #------------------------------------------------
+                # Apply tone mixer settings (will mute channels if not enabled)
+                #------------------------------------------------
+
+                if not ym_mix_tone_a:
+                    ym_volume_a = 0
+                if not ym_mix_tone_b:
+                    ym_volume_b = 0
+                if not ym_mix_tone_c:
+                    ym_volume_c = 0
+
+                #------------------------------------------------
+                # final mix to SN (for tones, bass & noise)
+                #------------------------------------------------
+
+                # tones first
+                sn_attn_out[channel_map_a] = ym_volume_a
+                sn_attn_out[channel_map_b] = ym_volume_b
+                sn_attn_out[channel_map_c] = ym_volume_c
+
+                # then noise or bass
+                if noise_active:
+                    # active noise overrides bass
+                    sn_attn_out[3] = noise_volume
+                    if bass_active:
+                        sn_attn_out[2] = 0 # turn off tone2 while noise is playing if bass is active
+                else:
+                    # no noise active, so check if bass is active (since thats emulated on SN noise channel using tuned periodic noise)
+                    if bass_active:
+                        # we need to determine the volume of the simulated bass so we can set the correct volume for the SN noise channel
+                        bass_volume = ym_volume_a   
+                        # no noise, just bass. turn off tone2, apply bass volume to channel 3  
+                        if bass_channel == 1: # b
+                            bass_volume = ym_volume_b
+                        else:
+                            if bass_channel == 2: # c
+                                bass_volume = ym_volume_c
+
+                        # output bass settings to SN
+                        sn_attn_out[3] = bass_volume
+                        sn_attn_out[2] = 0 # turn off tone2 while bass effect is playing
+                        
+                    else:
+                        # no noise, no bass, so just turn off noise channel
+                        sn_attn_out[3] = 0
+
+
+
+                #-------------------------------------------------
+                # output the final data to VGM
+                #-------------------------------------------------
+                if OPTIMIZE_VGM:
+                    # only output register values that have changed since last frame
+                    if sn_tone_out[0] != sn_tone_latch[0]:
+                        sn_tone_latch[0] = sn_tone_out[0]
+                        output_sn_tone(0, sn_tone_latch[0])
+
+                    if sn_tone_out[1] != sn_tone_latch[1]:
+                        sn_tone_latch[1] = sn_tone_out[1]              
+                        output_sn_tone(1, sn_tone_latch[1])
+
+                    if sn_tone_out[2] != sn_tone_latch[2]:
+                        sn_tone_latch[2] = sn_tone_out[2]              
+                        output_sn_tone(2, sn_tone_latch[2])
+
+                    # for the noise channel, only output register writes
+                    # if the noise tone has changed, so that we dont unnecessarily
+                    # reset the LSFR
+                    if sn_tone_out[3] != sn_tone_latch[3]:
+                        sn_tone_latch[3] = sn_tone_out[3]
+                        output_sn_noise(sn_tone_latch[3])
+
+                    # volumes
+                    if sn_attn_out[0] != sn_attn_latch[0]:
+                        sn_attn_latch[0] = sn_attn_out[0]              
+                        output_sn_volume(0, sn_attn_latch[0])
+                        
+                    if sn_attn_out[1] != sn_attn_latch[1]:
+                        sn_attn_latch[1] = sn_attn_out[1]              
+                        output_sn_volume(1, sn_attn_latch[1])
+
+                    if sn_attn_out[2] != sn_attn_latch[2]:
+                        sn_attn_latch[2] = sn_attn_out[2]              
+                        output_sn_volume(2, sn_attn_latch[2])
+
+                    if sn_attn_out[3] != sn_attn_latch[3]:
+                        sn_attn_latch[3] = sn_attn_out[3]              
+                        output_sn_volume(3, sn_attn_latch[3])
+
+                else:                
+                    output_sn_tone(0, sn_tone_out[0])
+                    output_sn_tone(1, sn_tone_out[0])
+                    output_sn_tone(2, sn_tone_out[0])
+                    output_sn_noise(sn_tone_out[3])
+
+                    output_sn_volume(0, sn_attn_out[0])
+                    output_sn_volume(1, sn_attn_out[1])
+                    output_sn_volume(2, sn_attn_out[2])
+                    output_sn_volume(3, sn_attn_out[3])
+
+                    #output_sn_volume(3, 15)
+                    #output_sn_volume(3, 15)
+                    #output_sn_volume(3, 15)
+                    #output_sn_volume(3, 15)
+                    #output_sn_volume(3, 15)
+
+
+
+
+
+                # now output to vgm
+                # so, for a higher res output we could output the volume here.
+                if True:
+
+                    if (ENABLE_ENVELOPES):
+                        # update the envelope cpu emulation
+                        self.__ymenv.tick( self.__header['chip_clock'] / (50*sample_rate) )
+                    vgm_stream.extend( struct.pack('B', 0x61) ) 
+                    vgm_stream.extend( struct.pack('B', sample_interval % 256) ) 
+                    vgm_stream.extend( struct.pack('B', sample_interval / 256) )                         
+
+                else:
+                    if False and ENABLE_ENVELOPES:
+
+                        for n in xrange(882):
+                            # update the envelope cpu emulation
+                            self.__ymenv.tick( self.__header['chip_clock'] / 44100 )
+                            vgm_stream.extend( struct.pack('B', 0x61) ) 
+                            vgm_stream.extend( struct.pack('B', 0x01) ) 
+                            vgm_stream.extend( struct.pack('B', 0x00) ) 
+                    else:
+                        if (ENABLE_ENVELOPES):
+                            # update the envelope cpu emulation
+                            self.__ymenv.tick( self.__header['chip_clock'] / 50 )
+                        vgm_stream.extend( struct.pack('B', 0x63) ) # WAIT50, or 882 samples (44100/50), short for 0x61 0x72 0x03
 
         #--------------------------------------------
         # Information
