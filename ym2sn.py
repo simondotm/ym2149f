@@ -26,8 +26,8 @@ ENABLE_BASS_TONES = True
 OPTIMIZE_VGM = True
 
 FILTER_CHANNEL_A = False
-FILTER_CHANNEL_B = True
-FILTER_CHANNEL_C = True
+FILTER_CHANNEL_B = False
+FILTER_CHANNEL_C = False
 
 
 SAMPLE_RATE = 22050 # 50
@@ -1323,9 +1323,14 @@ class YmReader(object):
             #--------------------------------------------------
 
             if noise_active:
+                sn_noise_freq_0 = float(vgm_clock) / (32.0 * 16.0) # 15.6 Khz @ 4Mhz
+                sn_noise_freq_1 = float(vgm_clock) / (32.0 * 32.0) #  7.8 Khz @ 4Mhz
+                sn_noise_freq_2 = float(vgm_clock) / (32.0 * 64.0) #  3.9 Khz @ 4Mhz
+
                 noise_freq = 0
                 if ym_noise == 0:
                     print " ERROR: Noise is enabled at frequency 0 - unexpected"
+                    noise_freq = sn_noise_freq_0
                 else:
                     noise_freq = float(clock) / (16.0 * ym_noise)
 
@@ -1333,10 +1338,13 @@ class YmReader(object):
                     ym_noise_max = max(ym_noise, ym_noise_max)
 
                 #snf = float(vgm_clock) / (16.0 * ym_noise)
+                
                 print "   noise_freq=" + str(noise_freq) + "Hz"
-                print "   SN 0 = " + str(float(vgm_clock) / (16.0 * 16.0))
-                print "   SN 1 = " + str(float(vgm_clock) / (16.0 * 32.0))
-                print "   SN 2 = " + str(float(vgm_clock) / (16.0 * 64.0))
+
+
+                print "   SN 0 = " + str(sn_noise_freq_0)
+                print "   SN 1 = " + str(sn_noise_freq_1)
+                print "   SN 2 = " + str(sn_noise_freq_2)
                 
                 # SN internal clock is 1/16 of external clock
                 # white noise on the SN has 4 frequencies
@@ -1350,15 +1358,40 @@ class YmReader(object):
                 # the output is pulsed - this is the same as the YM chip:
                 # clock / 16N
 
+                # find the closest noise frequency on SN to match YM noise frequency
+                def get_freq_dist(f1, f2):
+                    d = f1 - f2
+                    return math.sqrt(d*d)
+
                 sn_noise = 0
-                if False:
-                    if ym_noise > 24:
+                if True:
+                    min_dist = 1<<31
+                    dist = get_freq_dist(noise_freq, sn_noise_freq_0)
+                    print "dist " + str(dist) + " min_dist " + str(min_dist)
+                    if dist < min_dist:
+                        print " 0 " + str(dist)
+                        min_dist = dist
                         sn_noise = 0
-                    else:
-                        if ym_noise > 8:
-                            sn_noise = 1
+                    dist = get_freq_dist(noise_freq, sn_noise_freq_1)
+                    if dist < min_dist:
+                        print " 1 " + str(dist)
+                        min_dist = dist
+                        sn_noise = 1
+                    dist = get_freq_dist(noise_freq, sn_noise_freq_2)
+                    if dist < min_dist:
+                        print " 2 " + str(dist)
+                        min_dist = dist
+                        sn_noise = 2
+                    
+
+                    if False:
+                        if noise_freq > (sn_noise_freq_0 - ((sn_noise_freq_0-sn_noise_freq_1) * 0.75)):
+                            sn_noise = 0
                         else:
-                            sn_noise = 2
+                            if noise_freq > (sn_noise_freq_1 - ((sn_noise_freq_1-sn_noise_freq_2) * 0.75)):
+                                sn_noise = 1
+                            else:
+                                sn_noise = 2
 
                 print '   sn_noise = ' + str(sn_noise)
 
@@ -1420,14 +1453,14 @@ class YmReader(object):
                 if (ENABLE_ENVELOPES):
                     # use the envelope volume if M is set for any channel
                     if ym_envelope_a:
-                        ym_volume_a = self.__ymenv.get_envelope_volume() / 2
+                        ym_volume_a = min((self.__ymenv.get_envelope_volume() + 1) / 2,15)
                         print '  envelope on A'
                     if ym_envelope_b:
                         print '  envelope on B'
-                        ym_volume_b = self.__ymenv.get_envelope_volume() / 2
+                        ym_volume_b = min((self.__ymenv.get_envelope_volume() + 1) / 2,15)
                     if ym_envelope_c:
                         print '  envelope on C'
-                        ym_volume_c = self.__ymenv.get_envelope_volume() / 2    
+                        ym_volume_c = min((self.__ymenv.get_envelope_volume() + 1) / 2,15)
                 else:
                     # if envelopes are not enabled and we want to simulate envelopes, just use max volume
                     # it's not a great simulation, but prevents some audio being muted
@@ -1446,6 +1479,9 @@ class YmReader(object):
                 # noise volume calculation
                 # noise mixer is independent of tone mixer
                 #------------------------------------------------
+                # map logarithmic volume to linear volume
+                ym_volume_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
+                sn_volume_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
 
                 # determine which channels have the noise mixer enabled
                 # then calculate a volume which is the average level
@@ -1461,6 +1497,8 @@ class YmReader(object):
 
                     # average the volume based on number of active noise channels
                     noise_volume /= noise_active
+                    #noise_volume = 15
+
 
 
                 #------------------------------------------------
