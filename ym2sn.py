@@ -107,6 +107,37 @@ SAMPLE_RATE = 22050 # 50
 # Could possibly do the digidrums this way too.
 
 
+# map 4 or 5-bit logarithmic volume to 8-bit linear volume
+ym_amplitude_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
+sn_amplitude_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
+
+# YM Attentuation at normalized 1V amplitude is -0.75 dB per step for 5-bit envelopes and -1.5 dB per step for the 4-bit fixed levels
+# When we average volumes (eg. for noise mixing or envelope sampling) we cant just average the linear value because they represent logarithmic attenuation
+
+# get the normalized linear (float) amplitude for a 5 bit level
+def get_ym_amplitude(v):
+    if v == 0:
+        a = 0.0
+    else:
+        a = math.pow(10, ((-0.75*(31-v))/10) )
+    #print " Amplitude of volume " + str(v) + " is " + str(a)
+    a = min(1.0, a)
+    a = max(0.0, a)
+    return a
+
+# given an amplitude, return the nearest 5-bit volume level
+def get_ym_volume(a):
+    if (a == 0.0):
+        v = 0
+    else:
+        v = int( 31 - ( (10*math.log(a, 10)) / -0.75 ) )
+    #print "  Volume of amplitude " + str(a) + " is " + str(v)
+    #if v > 31:
+    #    print "TITS"
+    v = min(31, v)
+    v = max(0, v)
+    return v
+
 
 # Class to emulate the YM2149 HW envelope generator
 # Based on http://www.cpcwiki.eu/index.php/Ym2149 FPGA logic
@@ -467,7 +498,7 @@ class YmEnvelope():
         f = self.get_envelope_period() * self.ENV_CLOCK_DIVIDER
         #print " f=" + str(f)
 
-        v = self.__env_table[self.__env_cnt]
+        a = get_ym_amplitude( self.__env_table[self.__env_cnt] )
         n = 1
         if (f > 0):
             # the envelope logic runs every ENV_CLOCK_DIVIDER clock cycles
@@ -489,11 +520,11 @@ class YmEnvelope():
                 # increase number of envelope samples
                 n += 1
                 # add the envelope volume to the sampled volume
-                v += self.__env_table[self.__env_cnt]
+                a += get_ym_amplitude( self.__env_table[self.__env_cnt] )
                 #print "  __env_cnt=" + str(self.__env_cnt) + ", __clock_cnt=" + str(self.__clock_cnt)
 
         # output volume is the average volume for the elapsed number of clocks
-        self.__env_volume = v / n
+        self.__env_volume = get_ym_volume( a / n )
         #print "   Finished Tick __env_cnt=" + str(self.__env_cnt)
 
     # perform a check that the logic is working correctly
@@ -753,6 +784,9 @@ class YmReader(object):
         sn_attn_latch = [ 0, 0, 0, 0 ]
         sn_tone_latch = [ 0, 0, 0, 0 ]
 
+
+
+
         # YM stream processing code
         # Scan the YM stream one frame at a time
         for i in xrange(cnt):
@@ -950,9 +984,10 @@ class YmReader(object):
             #------------------------------------------------
 
             # volume attenuation level (if bit 4 is clear)
-            ym_volume_a = get_register_byte(8) & 15
-            ym_volume_b = get_register_byte(9) & 15
-            ym_volume_c = get_register_byte(10) & 15
+            # we convert to 5-bits so we're always working in higher precision
+            ym_volume_a = (get_register_byte(8) & 15) << 1
+            ym_volume_b = (get_register_byte(9) & 15) << 1
+            ym_volume_c = (get_register_byte(10) & 15) << 1
 
             # envelope attentuation mode flags
             ym_envelope_a = get_register_byte( 8) & 16
@@ -1191,9 +1226,9 @@ class YmReader(object):
             sn_tone_out = [0, 0, 0, 0]
 
             # load the current tones & volumes
-            sn_attn_out[0] = ym_volume_a
-            sn_attn_out[1] = ym_volume_b
-            sn_attn_out[2] = ym_volume_c
+            sn_attn_out[0] = ym_volume_a >> 1
+            sn_attn_out[1] = ym_volume_b >> 1
+            sn_attn_out[2] = ym_volume_c >> 1
             sn_attn_out[3] = 0
 
             sn_tone_out[0] = ym_to_sn(ym_tone_a)
@@ -1448,55 +1483,59 @@ class YmReader(object):
             sample_rate = 1 # 441 # / SAMPLE_RATE # 63 # 700Hz
             sample_interval = 882 / sample_rate
             for sample_loops in xrange(0,sample_rate):
-            
+
 
                 if (ENABLE_ENVELOPES):
                     # use the envelope volume if M is set for any channel
                     if ym_envelope_a:
-                        ym_volume_a = min((self.__ymenv.get_envelope_volume() + 1) / 2,15)
+                        ym_volume_a = self.__ymenv.get_envelope_volume()
                         print '  envelope on A'
                     if ym_envelope_b:
                         print '  envelope on B'
-                        ym_volume_b = min((self.__ymenv.get_envelope_volume() + 1) / 2,15)
+                        ym_volume_b = self.__ymenv.get_envelope_volume()
                     if ym_envelope_c:
                         print '  envelope on C'
-                        ym_volume_c = min((self.__ymenv.get_envelope_volume() + 1) / 2,15)
+                        ym_volume_c = self.__ymenv.get_envelope_volume()
                 else:
                     # if envelopes are not enabled and we want to simulate envelopes, just use max volume
                     # it's not a great simulation, but prevents some audio being muted
                     if SIM_ENVELOPES == 1:
                         if ym_envelope_a:
-                            ym_volume_a = 15
+                            ym_volume_a = 31
                         if ym_envelope_b:
-                            ym_volume_b = 15
+                            ym_volume_b = 31
                         if ym_envelope_c:
-                            ym_volume_c = 15
-
-
+                            ym_volume_c = 31
 
 
                 #------------------------------------------------
                 # noise volume calculation
                 # noise mixer is independent of tone mixer
                 #------------------------------------------------
-                # map logarithmic volume to linear volume
-                ym_volume_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
-                sn_volume_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
 
                 # determine which channels have the noise mixer enabled
                 # then calculate a volume which is the average level
                 noise_volume = 0
                 if ENABLE_NOISE and noise_active:
 
+                    noise_amplitude = 0.0
                     if ym_mix_noise_a: # and not ym_mix_tone_a:
-                        noise_volume += ym_volume_a
+                        noise_amplitude += get_ym_amplitude(ym_volume_a)
+                        #noise_volume += ym_volume_a
                     if ym_mix_noise_b: # and not ym_mix_tone_b:
-                        noise_volume += ym_volume_b
+                        noise_amplitude += get_ym_amplitude(ym_volume_b)
+                        #noise_volume += ym_volume_b
                     if ym_mix_noise_c: # and not ym_mix_tone_c:
-                        noise_volume += ym_volume_c
+                        noise_amplitude += get_ym_amplitude(ym_volume_c)
+                        #noise_volume += ym_volume_b
 
-                    # average the volume based on number of active noise channels
-                    noise_volume /= noise_active
+                    # average the noise amplitude based on number of active noise channels
+                    #nv = noise_volume / noise_active
+                    noise_amplitude /= noise_active
+                    # amplitude back to 5-bit volume
+                    noise_volume = get_ym_volume(noise_amplitude)
+
+                    #print "  Noise Average from volume=" + str(nv) + ", new method average=" + str(noise_volume)
                     #noise_volume = 15
 
 
@@ -1517,21 +1556,21 @@ class YmReader(object):
                 #------------------------------------------------
 
                 # tones first
-                sn_attn_out[channel_map_a] = ym_volume_a
-                sn_attn_out[channel_map_b] = ym_volume_b
-                sn_attn_out[channel_map_c] = ym_volume_c
+                sn_attn_out[channel_map_a] = ym_volume_a >> 1
+                sn_attn_out[channel_map_b] = ym_volume_b >> 1
+                sn_attn_out[channel_map_c] = ym_volume_c >> 1
 
                 # then noise or bass
                 if noise_active:
                     # active noise overrides bass
-                    sn_attn_out[3] = noise_volume
+                    sn_attn_out[3] = noise_volume >> 1
                     if bass_active:
                         sn_attn_out[2] = 0 # turn off tone2 while noise is playing if bass is active
                 else:
                     # no noise active, so check if bass is active (since thats emulated on SN noise channel using tuned periodic noise)
                     if bass_active:
                         # we need to determine the volume of the simulated bass so we can set the correct volume for the SN noise channel
-                        bass_volume = ym_volume_a   
+                        bass_volume = ym_volume_a
                         # no noise, just bass. turn off tone2, apply bass volume to channel 3  
                         if bass_channel == 1: # b
                             bass_volume = ym_volume_b
@@ -1540,7 +1579,7 @@ class YmReader(object):
                                 bass_volume = ym_volume_c
 
                         # output bass settings to SN
-                        sn_attn_out[3] = bass_volume
+                        sn_attn_out[3] = bass_volume >> 1
                         sn_attn_out[2] = 0 # turn off tone2 while bass effect is playing
                         
                     else:
