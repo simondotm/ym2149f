@@ -16,13 +16,14 @@ LFSR_BIT = 15                   # set this to either 15 or 16 depending on which
 ENABLE_ENVELOPES = True     # enable this to simulate envelopes in the output
 ENABLE_NOISE = True         # enables noises to be processed
 ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
+ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
 SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 441=22050Hz, 882=44100Hz)
 
 
 # legacy/non working debug flags
-FORCE_BASS_CHANNEL = -1          # set this to 0,1 or 2 (A/B/C) or -1
-SIM_ENVELOPES = False   # set to true to use full volume for envelepe controlled sounds
+FORCE_BASS_CHANNEL = -1     # set this to 0,1 or 2 (A/B/C) or -1, to make a specific channel always take the bass frequency. Not an elegant or useful approach.
+SIM_ENVELOPES = False       # set to true to use full volume for envelepe controlled sounds
 
 FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
@@ -1349,7 +1350,8 @@ class YmReader(object):
                     
                     bass_channel = -1
 
-                    if lo_count > 1:
+                    # if ENABLE_BASS_BIAS is set, and more than one channel is competing for the bass channel, we'll bias to this channel, otherwise its channel A < B < C 
+                    if ENABLE_BASS_BIAS and (lo_count > 1):
                         # we know the mix is active since lo_count only includes channels with mix on.
                         # so double check the selected bias channel is currently one of the actives bass frequencies and force that channel to be bass
                         if bass_channel_bias == 0 and (ym_freq_a < sn_freq_lo):
