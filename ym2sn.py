@@ -1231,6 +1231,7 @@ class YmReader(object):
             sn_attn_out[2] = ym_volume_c >> 1
             sn_attn_out[3] = 0
 
+            # tones get written anyway, if there's some low frequency tones detected, they'll get modded
             sn_tone_out[0] = ym_to_sn(ym_tone_a)
             sn_tone_out[1] = ym_to_sn(ym_tone_b)
             sn_tone_out[2] = ym_to_sn(ym_tone_c)
@@ -1293,16 +1294,17 @@ class YmReader(object):
                     # And move it over to SN Periodic noise channel instead
                     
                     #bass_channel = 2
-                    if ym_mix_tone_a and (ym_freq_a < ym_freq_b and ym_freq_a < ym_freq_c):
+                    if ym_mix_tone_a and (ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
                         bass_channel = 0
                     else:
-                        if ym_mix_tone_b and (ym_freq_b < ym_freq_a and ym_freq_b < ym_freq_c):
+                        if ym_mix_tone_b and (ym_freq_b <= ym_freq_a and ym_freq_b <= ym_freq_c):
                             bass_channel = 1
                         else:
-                            if ym_mix_tone_c and (ym_freq_c < ym_freq_a and ym_freq_c < ym_freq_b):
+                            if ym_mix_tone_c and (ym_freq_c <= ym_freq_a and ym_freq_c <= ym_freq_b):
                                 bass_channel = 2
                             else:
                                 print " ERROR: no bass channel assigned - should not happen!"
+                                print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
 
 
                     if (FORCE_BASS_CHANNEL >= 0):
