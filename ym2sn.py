@@ -10,27 +10,25 @@ import time
 import binascii
 import math
 
-ENABLE_ENVELOPES = True        # enable this to simulate envelopes in the output
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
+
+ENABLE_ENVELOPES = True     # enable this to simulate envelopes in the output
+ENABLE_NOISE = True         # enables noises to be processed
+ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
+OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
+SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 441=22050Hz, 882=44100Hz)
+
+
+# legacy/non working debug flags
 FORCE_BASS_CHANNEL = -1          # set this to 0,1 or 2 (A/B/C) or -1
-
 SIM_ENVELOPES = False   # set to true to use full volume for envelepe controlled sounds
-if ENABLE_ENVELOPES:
-    HACK_TIME = 0 #20                  # set to non-zero to output only first N seconds
-else:
-    HACK_TIME = 0
-
-ENABLE_NOISE = True
-ENABLE_BASS_TONES = True
-OPTIMIZE_VGM = True
 
 FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
 FILTER_CHANNEL_C = False
 
 
-SAMPLE_RATE = 22050 # 50
 
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
@@ -696,8 +694,7 @@ class YmReader(object):
         # prepare the YM file parser
         clock = self.__header['chip_clock']
         cnt  = self.__header['nb_frames']
-        if HACK_TIME > 0:
-            cnt = HACK_TIME * 50 # hack 10 secs only
+
         regs = self.__data
 
         digi_drums = self.__header['nb_digidrums']
@@ -1553,7 +1550,7 @@ class YmReader(object):
                     self.__ymenv.set_envelope_shape(ym_envelope_shape)
 
             # Now we sample the volume repeatedly at the rate given. This has the effect of simulating the envelopes at a better resolution.
-            sample_rate = 1 # 441 # / SAMPLE_RATE # 63 # 700Hz
+            sample_rate = SAMPLE_RATE # 1 # 441 # / SAMPLE_RATE # 63 # 700Hz
             sample_interval = 882 / sample_rate
             for sample_loops in xrange(0,sample_rate):
 
