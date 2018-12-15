@@ -17,6 +17,7 @@ ENABLE_ENVELOPES = True     # enable this to simulate envelopes in the output
 ENABLE_NOISE = True         # enables noises to be processed
 ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
 ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
+ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
 SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 441=22050Hz, 882=44100Hz)
 
@@ -29,7 +30,8 @@ FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
 FILTER_CHANNEL_C = False
 
-
+ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
+ENABLE_VERBOSE = True
 
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
@@ -468,7 +470,8 @@ class YmEnvelope():
 
         # set the current envelope volume
         self.__env_volume = self.__env_table[0]
-        print "  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) 
+        if ENABLE_DEBUG:
+            print "  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) 
 
 
     # set the YM chip envelope frequency registers
@@ -735,10 +738,10 @@ class YmReader(object):
             return int(binascii.hexlify(regs[register][frame]), 16)
             
 
-
-        print "---"
-        print get_register_data(0,0)
-        print get_register_data(1,0)
+        if ENABLE_DEBUG:
+            print "---"
+            #print get_register_data(0,0)
+            #print get_register_data(1,0)
 
         # set default volumes at the start of the tune for all channels
         dv = 15 # default volume is 15 (silent)
@@ -838,7 +841,8 @@ class YmReader(object):
                 # if the frequency goes below the range
                 # of the SN capabilities, add an octave
                 while ym_freq < baseline_freq:
-                    print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
+                    if ENABLE_DEBUG:
+                        print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
                     ym_freq *= 2.0
 
             # calculate the appropriate SN tone register value
@@ -861,7 +865,8 @@ class YmReader(object):
 
                 sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
 
-            print "  ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
+            if ENABLE_DEBUG:
+                print "  ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
 
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
@@ -1032,7 +1037,8 @@ class YmReader(object):
             # Conversion Logic
             #------------------------------------------------
 
-            print "--- "		
+            if ENABLE_DEBUG:
+                print "--- "		
 
             #------------------------------------------------
             # extract the YM register values for this frame
@@ -1134,8 +1140,10 @@ class YmReader(object):
             # Handle DD frequency
             dd_freq = 0
             if dd_on:
-                print "  dd_tp=" + str(dd_tp)
-                print "  dd_tc=" + str(dd_tc)
+
+                if ENABLE_DEBUG:
+                    print "  dd_tp=" + str(dd_tp)
+                    print "  dd_tc=" + str(dd_tc)
 
                 if dd_tc == 0:
                     print " ERROR: Digidrum TC value is 0 - unexpected & unhandled"
@@ -1307,9 +1315,9 @@ class YmReader(object):
                     if ym_mix_noise_c: # and not ym_mix_tone_c:
                         noise_active += 1
 
-                    print "  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise)          
+                    if ENABLE_DEBUG:
+                        print "  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise)          
 
-            #noise_active = 0 # HACK
 
 
             #--------------------------------------------------
@@ -1343,7 +1351,9 @@ class YmReader(object):
                 # adjust for periodic noise bass
                 if lo_count:
                     bass_active = True
-                    print "  " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
+
+                    if ENABLE_DEBUG:
+                        print "  " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
@@ -1362,7 +1372,8 @@ class YmReader(object):
                             bass_channel = bass_channel_bias
 
                     if bass_channel >= 0:
-                        print " Selected bass channel " + str(bass_channel) + " as the bias due to multiple bass tones"
+                        if ENABLE_DEBUG:
+                            print " Selected bass channel " + str(bass_channel) + " as the bias due to multiple bass tones"
                     else:
                         if ym_mix_tone_a and (ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
                             bass_channel = 0
@@ -1374,7 +1385,8 @@ class YmReader(object):
                                     bass_channel = 2
                                 else:
                                     print " ERROR: no bass channel assigned - should not happen!"
-                                    print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
+                                    if ENABLE_DEBUG:
+                                        print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
 
 
                     if (FORCE_BASS_CHANNEL >= 0):
@@ -1383,7 +1395,8 @@ class YmReader(object):
                     # Swap channels according to bass preference
                     if bass_channel == 0:
                         # it's A
-                        print "  Channel A -> Bass "                     
+                        if ENABLE_DEBUG:
+                            print "  Channel A -> Bass "                     
 
                         channel_map_a = 2
                         channel_map_b = 1
@@ -1398,7 +1411,8 @@ class YmReader(object):
                     else:
                         if bass_channel == 1:
                             # it's B
-                            print "  Channel B -> Bass "                     
+                            if ENABLE_DEBUG:
+                                print "  Channel B -> Bass "                     
 
                             channel_map_a = 0
                             channel_map_b = 2
@@ -1409,8 +1423,9 @@ class YmReader(object):
                             sn_tone_out[2] = ym_to_sn(ym_tone_b, True)
 
                         else:
-                            # it's C    
-                            print "  Channel C -> Bass "                     
+                            # it's C  
+                            if ENABLE_DEBUG:  
+                                print "  Channel C -> Bass "                     
 
                             channel_map_a = 0
                             channel_map_b = 1
@@ -1446,12 +1461,11 @@ class YmReader(object):
 
                 #snf = float(vgm_clock) / (16.0 * ym_noise)
                 
-                print "   noise_freq=" + str(noise_freq) + "Hz"
-
-
-                print "   SN 0 = " + str(sn_noise_freq_0)
-                print "   SN 1 = " + str(sn_noise_freq_1)
-                print "   SN 2 = " + str(sn_noise_freq_2)
+                if ENABLE_DEBUG:
+                    print "   noise_freq=" + str(noise_freq) + "Hz"
+                    print "   SN 0 = " + str(sn_noise_freq_0)
+                    print "   SN 1 = " + str(sn_noise_freq_1)
+                    print "   SN 2 = " + str(sn_noise_freq_2)
                 
                 # SN internal clock is 1/16 of external clock
                 # white noise on the SN has 4 frequencies
@@ -1471,22 +1485,26 @@ class YmReader(object):
                     return math.sqrt(d*d)
 
                 sn_noise = 0
-                if True:
+                if ENABLE_NOISE_PITCH:
                     min_dist = 1<<31
                     dist = get_freq_dist(noise_freq, sn_noise_freq_0)
-                    print "dist " + str(dist) + " min_dist " + str(min_dist)
+                    if ENABLE_DEBUG:
+                        print "dist " + str(dist) + " min_dist " + str(min_dist)
                     if dist < min_dist:
-                        print " 0 " + str(dist)
+                        if ENABLE_DEBUG:
+                            print " 0 " + str(dist)
                         min_dist = dist
                         sn_noise = 0
                     dist = get_freq_dist(noise_freq, sn_noise_freq_1)
                     if dist < min_dist:
-                        print " 1 " + str(dist)
+                        if ENABLE_DEBUG:
+                            print " 1 " + str(dist)
                         min_dist = dist
                         sn_noise = 1
                     dist = get_freq_dist(noise_freq, sn_noise_freq_2)
                     if dist < min_dist:
-                        print " 2 " + str(dist)
+                        if ENABLE_DEBUG:
+                            print " 2 " + str(dist)
                         min_dist = dist
                         sn_noise = 2
                     
@@ -1500,10 +1518,11 @@ class YmReader(object):
                             else:
                                 sn_noise = 2
 
-                print '   sn_noise = ' + str(sn_noise)
+                if ENABLE_DEBUG:
+                    print '   sn_noise = ' + str(sn_noise)
 
 
-                sn_tone_out[3] = 4 + sn_noise # White noise, fixed low frequency (16 cycle)
+                sn_tone_out[3] = 4 + sn_noise # bit 2 selects White noise, 0/1/2 are fixed low frequency (16 cycle) (3 is the tuned white noise)
                 # most tunes dont seem to change the noise frequency much
             else:
                 if bass_active:
@@ -1548,7 +1567,8 @@ class YmReader(object):
                 # (since setting this register resets the envelope state)
 
                 if (ym_envelope_shape != 255):
-                    print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
+                    if ENABLE_DEBUG:
+                        print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
                     self.__ymenv.set_envelope_shape(ym_envelope_shape)
 
             # Now we sample the volume repeatedly at the rate given. This has the effect of simulating the envelopes at a better resolution.
@@ -1561,12 +1581,15 @@ class YmReader(object):
                     # use the envelope volume if M is set for any channel
                     if ym_envelope_a:
                         ym_volume_a = self.__ymenv.get_envelope_volume()
-                        print '  envelope on A'
+                        if ENABLE_DEBUG:
+                            print '  envelope on A'
                     if ym_envelope_b:
-                        print '  envelope on B'
+                        if ENABLE_DEBUG:
+                            print '  envelope on B'
                         ym_volume_b = self.__ymenv.get_envelope_volume()
                     if ym_envelope_c:
-                        print '  envelope on C'
+                        if ENABLE_DEBUG:
+                            print '  envelope on C'
                         ym_volume_c = self.__ymenv.get_envelope_volume()
                 else:
                     # if envelopes are not enabled and we want to simulate envelopes, just use max volume
