@@ -19,7 +19,7 @@ ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with p
 ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
 ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
-SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 441=22050Hz, 882=44100Hz)
+SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
 
 
 # legacy/non working debug flags
@@ -709,6 +709,9 @@ class YmReader(object):
         # prepare the vgm output
         #vgm_filename = "test.vgm"
         print "   VGM Processing : Writing output VGM file '" + vgm_filename + "'"
+
+        print "---"
+
         vgm_stream = bytearray()
         vgm_time = 0
         vgm_clock = SN_CLOCK # SN clock speed
@@ -729,19 +732,21 @@ class YmReader(object):
         sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * float(LFSR_BIT))
         sn_pfreq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0 * float(LFSR_BIT))
 
-        print "YM Tone Frequency range from " + str(ym_freq_lo) + "Hz to " + str(ym_freq_hi) + "Hz"
-        print "SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz"
-        print "SN Bass Frequency range from " + str(sn_pfreq_lo) + "Hz to " + str(sn_pfreq_hi) + "Hz"
+        print " YM clock is " + str(clock)
+        print " SN clock is " + str(vgm_clock)
+
+        print " YM Tone Frequency range from " + str(ym_freq_lo) + "Hz to " + str(ym_freq_hi) + "Hz"
+        print " SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz"
+        print " SN Bass Frequency range from " + str(sn_pfreq_lo) + "Hz to " + str(sn_pfreq_hi) + "Hz"
 
 
         def get_register_data(register, frame):
             return int(binascii.hexlify(regs[register][frame]), 16)
             
+        print "---"
 
-        if ENABLE_DEBUG:
-            print "---"
-            #print get_register_data(0,0)
-            #print get_register_data(1,0)
+        #print get_register_data(0,0)
+        #print get_register_data(1,0)
 
         # set default volumes at the start of the tune for all channels
         dv = 15 # default volume is 15 (silent)
@@ -1025,6 +1030,8 @@ class YmReader(object):
             bass_channel_bias = 2 # b
 
         print "    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel"
+        print "---"
+
 
         # YM stream processing code
         # Scan the YM stream one frame at a time
@@ -1081,7 +1088,7 @@ class YmReader(object):
             ym_mix_tone_b = (ym_mixer & (1<<1)) == 0
             ym_mix_tone_c = (ym_mixer & (1<<2)) == 0
 
-            if False:   # does not work
+            if True:   # does not work
                 if FILTER_CHANNEL_A:
                     ym_mix_tone_a = 0
                 if FILTER_CHANNEL_B:
