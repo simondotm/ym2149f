@@ -784,6 +784,186 @@ class YmReader(object):
         sn_attn_latch = [ 0, 0, 0, 0 ]
         sn_tone_latch = [ 0, 0, 0, 0 ]
 
+        # Helper functions
+
+        def get_register_byte(r):
+            return int(binascii.hexlify(regs[r][i]), 16)
+
+        def get_register_word(r):
+            return get_register_byte(r) + get_register_byte(r+1)*256
+
+        def getregisterflag(data,bit,key0,key1):
+            if data & (1<<bit):
+                return key1
+            else:
+                return key0      
+
+        #--------------------------------------------------------------
+        # return frequency in hz of a given YM tone/noise pitch
+        #--------------------------------------------------------------
+        def get_ym_frequency(v):
+            if v < 1:
+                v = 1
+            return clock / (16 * v)
+
+
+        #--------------------------------------------------------------
+        # given a YM tone period, return the equivalent SN tone register period
+        #--------------------------------------------------------------
+        def ym_to_sn(ym_tone, is_periodic = False):
+
+            # Adjust freq scale & baseline range if periodic noise selected
+            baseline_freq = sn_freq_lo
+            sn_freq_scale = 1.0
+            if is_periodic:
+                sn_freq_scale = float(LFSR_BIT)
+                baseline_freq = sn_pfreq_lo
+
+            # tones should never exceed 12-bit range
+            # but some YM files encode extra info
+            # into the top 4 bits
+
+            if ym_tone > 4095:
+                print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
+                ym_tone = ym_tone & 4095
+                
+            # If the tone is 0, it's probably because
+            # there's a digidrum being played on this voice
+            if ym_tone == 0:
+                print " ERROR: ym tone is 0"
+                ym_freq = 0
+            else:
+                ym_freq = (float(clock) / 16.0) / float(ym_tone)
+
+
+
+                # if the frequency goes below the range
+                # of the SN capabilities, add an octave
+                while ym_freq < baseline_freq:
+                    print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
+                    ym_freq *= 2.0
+
+            # calculate the appropriate SN tone register value
+            if ym_freq == 0:
+                sn_tone = 0
+                sn_freq = 0
+            else:
+                sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * sn_freq_scale )
+                # due to the integer maths, some precision is lost at the lower end
+                sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
+
+                # clamp range to 10 bits
+                if sn_tone > 1023:
+                    sn_tone = 1023
+                    print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+                    # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+                if sn_tone < 1:
+                    sn_tone = 1
+                    print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
+
+                sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
+
+            print "  ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
+
+            hz_err = sn_freq - ym_freq
+            if hz_err > 2.0 or hz_err < -2.0:
+                print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
+
+            return sn_tone
+
+        #--------------------------------------------------------------
+        # As above, but for periodic white noise
+        #--------------------------------------------------------------
+        def ym_to_sn_periodic(ym_tone):
+
+            # tones should never exceed 12-bit range
+            # but some YM files encode extra info
+            # into the top 4 bits
+            if ym_tone > 4095:
+                print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
+                ym_tone = ym_tone & 4095
+
+            # If the tone is 0, it's probably because
+            # there's a digidrum being played on this voice
+            if ym_tone == 0:
+                print " ERROR: ym tone is 0"
+                ym_freq = 0
+            else:
+                ym_freq = (float(clock) / 16.0) / float(ym_tone)
+
+            # if the frequency goes below the range
+            # of the SN capabilities, add an octave
+            while ym_freq < sn_pfreq_lo:
+                ym_freq *= 2.0
+                print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
+
+            sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * float(LFSR_BIT) )
+            
+            # due to the integer maths, some precision is lost at the lower end
+            sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
+            # clamp range to 10 bits
+            if sn_tone > 1023:
+                sn_tone = 1023
+                print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+            if sn_tone < 1:
+                sn_tone = 1
+                print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
+
+            sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * float(LFSR_BIT))
+
+            #print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
+
+            hz_err = sn_freq - ym_freq
+            if hz_err > 2.0 or hz_err < -2.0:
+                print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
+
+            return sn_tone
+
+        #--------------------------------------------------------------
+        # given a channel and tone value, output vgm command
+        #--------------------------------------------------------------
+        def output_sn_tone(channel, tone):
+
+            if tone > 1023:
+                print " ERROR (output_sn_tone): tone > 1023"
+            if tone < 0:
+                print " ERROR (output_sn_tone): tone < 0"
+            r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
+            r_hi = (tone >> 4) & 63
+
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
+
+            raw_stream.extend( struct.pack('B', (tone & 15)) )
+            raw_stream.extend( struct.pack('B', (tone >> 4) & 63) )
+
+        #--------------------------------------------------------------
+        # output a noise tone on channel 3
+        #--------------------------------------------------------------
+        def output_sn_noise(tone):
+
+            r_lo = 128 + (3 << 5) + (tone & 15)
+
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
+
+            raw_stream.extend( struct.pack('B', (tone & 15)) ) # LATCH TONE
+        
+
+        #--------------------------------------------------------------
+        # given a channel and volume value, output vgm command
+        #--------------------------------------------------------------
+        def output_sn_volume(channel, volume):
+
+            r_lo = 128 + (channel << 5) + 16 + (15 - (volume & 15))    # bit 4 set for volume, SN volumes are inverted
+
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH VOLUME
+
+            raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
+
 
 
 
@@ -791,185 +971,6 @@ class YmReader(object):
         # Scan the YM stream one frame at a time
         for i in xrange(cnt):
             s = "Frame="+'{:05d}'.format(i)+" "
-
-            def get_register_byte(r):
-                return int(binascii.hexlify(regs[r][i]), 16)
-
-            def get_register_word(r):
-                return get_register_byte(r) + get_register_byte(r+1)*256
-
-            def getregisterflag(data,bit,key0,key1):
-                if data & (1<<bit):
-                    return key1
-                else:
-                    return key0      
-
-            #--------------------------------------------------------------
-            # return frequency in hz of a given YM tone/noise pitch
-            #--------------------------------------------------------------
-            def get_ym_frequency(v):
-                if v < 1:
-                    v = 1
-                return clock / (16 * v)
-
-
-            #--------------------------------------------------------------
-            # given a YM tone period, return the equivalent SN tone register period
-            #--------------------------------------------------------------
-            def ym_to_sn(ym_tone, is_periodic = False):
-
-                # Adjust freq scale & baseline range if periodic noise selected
-                baseline_freq = sn_freq_lo
-                sn_freq_scale = 1.0
-                if is_periodic:
-                    sn_freq_scale = float(LFSR_BIT)
-                    baseline_freq = sn_pfreq_lo
-
-                # tones should never exceed 12-bit range
-                # but some YM files encode extra info
-                # into the top 4 bits
-
-                if ym_tone > 4095:
-                    print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
-                    ym_tone = ym_tone & 4095
-                    
-                # If the tone is 0, it's probably because
-                # there's a digidrum being played on this voice
-                if ym_tone == 0:
-                    print " ERROR: ym tone is 0"
-                    ym_freq = 0
-                else:
-                    ym_freq = (float(clock) / 16.0) / float(ym_tone)
-
-
-
-                    # if the frequency goes below the range
-                    # of the SN capabilities, add an octave
-                    while ym_freq < baseline_freq:
-                        print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
-                        ym_freq *= 2.0
-
-                # calculate the appropriate SN tone register value
-                if ym_freq == 0:
-                    sn_tone = 0
-                    sn_freq = 0
-                else:
-                    sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * sn_freq_scale )
-                    # due to the integer maths, some precision is lost at the lower end
-                    sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
-
-                    # clamp range to 10 bits
-                    if sn_tone > 1023:
-                        sn_tone = 1023
-                        print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
-                        # this could result in bad tuning, depending on why it occurred. better to reduce freq?
-                    if sn_tone < 1:
-                        sn_tone = 1
-                        print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
-
-                    sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
-
-                print "  ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
-
-                hz_err = sn_freq - ym_freq
-                if hz_err > 2.0 or hz_err < -2.0:
-                    print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
-
-                return sn_tone
-
-            #--------------------------------------------------------------
-            # As above, but for periodic white noise
-            #--------------------------------------------------------------
-            def ym_to_sn_periodic(ym_tone):
-
-                # tones should never exceed 12-bit range
-                # but some YM files encode extra info
-                # into the top 4 bits
-                if ym_tone > 4095:
-                    print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
-                    ym_tone = ym_tone & 4095
-
-                # If the tone is 0, it's probably because
-                # there's a digidrum being played on this voice
-                if ym_tone == 0:
-                    print " ERROR: ym tone is 0"
-                    ym_freq = 0
-                else:
-                    ym_freq = (float(clock) / 16.0) / float(ym_tone)
-
-                # if the frequency goes below the range
-                # of the SN capabilities, add an octave
-                while ym_freq < sn_pfreq_lo:
-                    ym_freq *= 2.0
-                    print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
-
-                sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * float(LFSR_BIT) )
-                
-                # due to the integer maths, some precision is lost at the lower end
-                sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
-                # clamp range to 10 bits
-                if sn_tone > 1023:
-                    sn_tone = 1023
-                    print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
-                if sn_tone < 1:
-                    sn_tone = 1
-                    print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
-
-                sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * float(LFSR_BIT))
-
-                #print "ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
-
-                hz_err = sn_freq - ym_freq
-                if hz_err > 2.0 or hz_err < -2.0:
-                    print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
-
-                return sn_tone
-
-            #--------------------------------------------------------------
-            # given a channel and tone value, output vgm command
-            #--------------------------------------------------------------
-            def output_sn_tone(channel, tone):
-
-                if tone > 1023:
-                    print " ERROR (output_sn_tone): tone > 1023"
-                if tone < 0:
-                    print " ERROR (output_sn_tone): tone < 0"
-                r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
-                r_hi = (tone >> 4) & 63
-
-                vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-                vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
-                vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-                vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
-
-                raw_stream.extend( struct.pack('B', (tone & 15)) )
-                raw_stream.extend( struct.pack('B', (tone >> 4) & 63) )
-
-            #--------------------------------------------------------------
-            # output a noise tone on channel 3
-            #--------------------------------------------------------------
-            def output_sn_noise(tone):
-
-                r_lo = 128 + (3 << 5) + (tone & 15)
-
-                vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-                vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
-
-                raw_stream.extend( struct.pack('B', (tone & 15)) ) # LATCH TONE
-            
-
-            #--------------------------------------------------------------
-            # given a channel and volume value, output vgm command
-            #--------------------------------------------------------------
-            def output_sn_volume(channel, volume):
-
-                r_lo = 128 + (channel << 5) + 16 + (15 - (volume & 15))    # bit 4 set for volume, SN volumes are inverted
-
-                vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-                vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH VOLUME
-
-                raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
-
 
 
 
