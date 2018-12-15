@@ -964,8 +964,64 @@ class YmReader(object):
 
             raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
 
+        # YM stream pre-processing code
+        channel_lof_a = 0
+        channel_lof_b = 0
+        channel_lof_c = 0
+        channel_lof_multi = 0
+        envelope_count = 0
 
+        for i in xrange(cnt):
+            ym_tone_a = get_register_word(0) & 4095
+            ym_tone_b = get_register_word(2) & 4095
+            ym_tone_c = get_register_word(4) & 4095
 
+            ym_freq_a = get_ym_frequency(ym_tone_a)
+            ym_freq_b = get_ym_frequency(ym_tone_b)
+            ym_freq_c = get_ym_frequency(ym_tone_c)
+
+            # envelope attentuation mode flags
+            ym_envelope_a = get_register_byte( 8) & 16
+            ym_envelope_b = get_register_byte( 9) & 16
+            ym_envelope_c = get_register_byte(10) & 16
+
+            # low freq analysis
+            lof_channels = 0
+            if (ym_freq_a < sn_freq_lo):
+                channel_lof_a += 1
+                lof_channels += 1
+            if (ym_freq_b < sn_freq_lo):
+                channel_lof_b += 1
+                lof_channels += 1                
+            if (ym_freq_c < sn_freq_lo):
+                channel_lof_c += 1
+                lof_channels += 1  
+
+            if lof_channels > 1:
+                channel_lof_multi += 1    
+
+            # envelope usage analysis
+            if ym_envelope_a or ym_envelope_b or ym_envelope_c:
+                envelope_count += 1
+
+        print " Song analysis over " + str(cnt) + " frames:"
+        if envelope_count:
+            print " There were " + str(envelope_count) + " frames that used envelopes"
+        else:
+            print " This tune does not use envelopes."
+        print " "
+        print "  Channel A has " + str(channel_lof_a) + " low frequency tones"
+        print "  Channel B has " + str(channel_lof_b) + " low frequency tones"
+        print "  Channel C has " + str(channel_lof_c) + " low frequency tones"
+        print "  There were " + str(channel_lof_multi) + " frames where >1 channel were low frequency tones"
+
+        bass_channel_bias = 0 # a
+        if channel_lof_b > channel_lof_a and channel_lof_b > channel_lof_c:
+            bass_channel_bias = 1 # b
+        if channel_lof_c > channel_lof_a and channel_lof_c > channel_lof_b:
+            bass_channel_bias = 2 # b
+
+        print "    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel"
 
         # YM stream processing code
         # Scan the YM stream one frame at a time
@@ -1294,18 +1350,32 @@ class YmReader(object):
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
                     
-                    #bass_channel = 2
-                    if ym_mix_tone_a and (ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
-                        bass_channel = 0
+                    bass_channel = -1
+
+                    if lo_count > 1:
+                        # we know the mix is active since lo_count only includes channels with mix on.
+                        # so double check the selected bias channel is currently one of the actives bass frequencies and force that channel to be bass
+                        if bass_channel_bias == 0 and (ym_freq_a < sn_freq_lo):
+                            bass_channel = bass_channel_bias
+                        if bass_channel_bias == 1 and (ym_freq_b < sn_freq_lo):
+                            bass_channel = bass_channel_bias
+                        if bass_channel_bias == 2 and (ym_freq_c < sn_freq_lo):
+                            bass_channel = bass_channel_bias
+
+                    if bass_channel >= 0:
+                        print " Selected bass channel " + str(bass_channel) + " as the bias due to multiple bass tones"
                     else:
-                        if ym_mix_tone_b and (ym_freq_b <= ym_freq_a and ym_freq_b <= ym_freq_c):
-                            bass_channel = 1
+                        if ym_mix_tone_a and (ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
+                            bass_channel = 0
                         else:
-                            if ym_mix_tone_c and (ym_freq_c <= ym_freq_a and ym_freq_c <= ym_freq_b):
-                                bass_channel = 2
+                            if ym_mix_tone_b and (ym_freq_b <= ym_freq_a and ym_freq_b <= ym_freq_c):
+                                bass_channel = 1
                             else:
-                                print " ERROR: no bass channel assigned - should not happen!"
-                                print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
+                                if ym_mix_tone_c and (ym_freq_c <= ym_freq_a and ym_freq_c <= ym_freq_b):
+                                    bass_channel = 2
+                                else:
+                                    print " ERROR: no bass channel assigned - should not happen!"
+                                    print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
 
 
                     if (FORCE_BASS_CHANNEL >= 0):
