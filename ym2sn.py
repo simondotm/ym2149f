@@ -22,7 +22,7 @@ ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequenc
 ENABLE_ATTENUATION = True   # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
 
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
-SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
+SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 126=6300Hz (GOOD!) 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
 
 
 # legacy/non working debug flags
