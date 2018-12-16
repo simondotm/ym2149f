@@ -1857,17 +1857,24 @@ class YmReader(object):
         VGM_FREQUENCY = 44100
         if not STRIP_GD3: # disable for no GD3 tag
             # note that GD3 requires two-byte characters
-            gd3_data.extend( self.__header['song_name'].encode("utf_16") + b'\x00' + b'\x00') #title_eng' + b'\x00\x00') # title_eng
+            # title
+            gd3_data.extend( self.__header['song_name'].encode("utf_16le") + b'\x00' + b'\x00') #title_eng' + b'\x00\x00') # title_eng
             gd3_data.extend( b'\x00\x00') # title_jap
-            gd3_data.extend( self.__filename.encode("utf_16") + b'\x00\x00') # game_eng
+            # game
+            gd3_data.extend( self.__filename.encode("utf_16le") + b'\x00\x00') # game_eng
             gd3_data.extend( b'\x00\x00') # game_jap
-            gd3_data.extend( 'Atari ST'.encode("utf_16") + b'\x00\x00') # console_eng
+            # console
+            gd3_data.extend( 'YM2149F'.encode("utf_16le") + b'\x00\x00') # console_eng
             gd3_data.extend( b'\x00\x00') # console_jap
-            gd3_data.extend( self.__header['author_name'].encode("utf_16") + b'\x00\x00') # artist_eng
+            # author
+            gd3_data.extend( self.__header['author_name'].encode("utf_16le") + b'\x00\x00') # artist_eng
             gd3_data.extend( b'\x00\x00') # artist_jap
+            # date
             gd3_data.extend( b'\x00\x00') # date
-            gd3_data.extend( 'github.com/simondotm/ym2149f'.encode("utf_16") + b'\x00\x00')# vgm_creator
-            gd3_data.extend( self.__header['song_comment'].encode("utf_16") + b'\x00\x00') # notes
+            # vgm creator
+            gd3_data.extend( 'github.com/simondotm/ym2149f'.encode("utf_16le") + b'\x00\x00')# vgm_creator
+            # notes
+            gd3_data.extend( self.__header['song_comment'].encode("utf_16le") + b'\x00\x00') # notes
             
             gd3_stream.extend('Gd3 ')
             gd3_stream.extend(struct.pack('I', 0x100))				# GD3 version
