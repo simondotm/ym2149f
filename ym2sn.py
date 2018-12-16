@@ -145,6 +145,8 @@ def get_ym_volume(a):
     return v
 
 
+
+
 # Class to emulate the YM2149 HW envelope generator
 # Based on http://www.cpcwiki.eu/index.php/Ym2149 FPGA logic
 # This is very slow. No longer used.
@@ -831,7 +833,39 @@ class YmReader(object):
         sn_attn_latch = [ 0, 0, 0, 0 ]
         sn_tone_latch = [ 0, 0, 0, 0 ]
 
+        # Setup attenuation mapping tables
+        # SN attenuates in steps of 2dB, whereas YM steps in 1.5dB steps, so find the nearest volume in this table.
+        # Not sure this is ideal, because without envelopes, some tunes only use the 4 bit levels, and they dont use all 16-levels of the output SN
+        # but technically is a better representation? hmm.... revist
+        sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 10362, 13045, 16422, 20675, 26028, 32767 ]
+        ym_sn_volume_table = []
+        for n in xrange(32):
+            a = int(get_ym_amplitude(n) * 32767.0)
+            dist = 1<<31
+            index = 0
+            for i in xrange(16):
+                l = sn_volume_table[i]
+                p = a - l
+                d = p * p
+                # we always round to the nearest louder level (so we are never quieter than target level)
+                if d < dist and l >= a:
+                    dist = d
+                    index = i
+
+            ym_sn_volume_table.append(index)
+
+#        print ym_sn_volume_table        
+
         # Helper functions
+
+        def get_sn_volume(ym_volume):
+            if ENABLE_ATTENUATION:
+                # this could be a pure lookup table
+                return ym_sn_volume_table[ym_volume]
+            else:
+                # simple attentuation map
+                return (ym_volume >> 1) & 15
+                        
 
         def get_register_byte(r):
             return int(binascii.hexlify(regs[r][i]), 16)
@@ -1706,36 +1740,9 @@ class YmReader(object):
                 # final output mix of volumes to SN (for tones, bass & noise)
                 #------------------------------------------------
 
+
+
                 # tone volumes first. we're converting the 5-bit YM volumes to 4-bit SN volumes.
-                # SN attenuates in steps of 2dB, whereas YM steps in 1.5dB steps, so find the nearest volume in this table.
-                def get_sn_volume(ym_volume):
-                    sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 10362, 13045, 16422, 20675, 26028, 32767 ]
-
-                    if ENABLE_ATTENUATION:
-                        # this could be a pure lookup table
-                        a = int(get_ym_amplitude(ym_volume) * 32767.0)
-                        dist = 1<<31
-                        index = 0
-                        for i in xrange(16):
-                            l = sn_volume_table[i]
-                            p = a - l
-                            d = p * p
-                            if d < dist and l >= a:
-                                dist = d
-                                index = i
-
-                        #print " ym_volume=" + str(ym_volume) + " sn_vol_simple=" + str(ym_volume>>1) + " sn_vol_nearest=" + str(index)
-                        return index
-                    else:
-                        # simple attentuation map
-                        return (ym_volume >> 1) & 15
-                        
-
-#                for n in xrange(32):
-#                    l = get_sn_volume(n)
-#                    print " YM=" + str(n) + " SN=" + str(l)
-
-
                 sn_attn_out[channel_map_a] = get_sn_volume(ym_volume_a)
                 sn_attn_out[channel_map_b] = get_sn_volume(ym_volume_b)
                 sn_attn_out[channel_map_c] = get_sn_volume(ym_volume_c)
