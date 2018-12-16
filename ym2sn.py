@@ -9,6 +9,7 @@ import sys
 import time
 import binascii
 import math
+import os
 
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
@@ -551,33 +552,83 @@ class YmEnvelope():
 
 class YmReader(object):
 
+    def __init__(self, fd):
+
+        # create instance of YM envelope generator
+        self.__ymenv = YmEnvelope()
+        #self.__ymenv.test()
+
+        print "Parsing YM file..."
+
+        self.__fd = fd
+        self.__filename = fd.name
+        self.__filesize = os.path.getsize(fd.name) 
+        self.__parse_header()
+        self.__data = []
+        if not self.__data:
+            self.__read_data()
+            self.__check_eof()        
+
     def __parse_extra_infos(self):
-        # Thanks http://stackoverflow.com/questions/32774910/clean-way-to-read-a-null-terminated-c-style-string-from-a-file
-        toeof = iter(functools.partial(self.__fd.read, 1), '')
-        def readcstr():
-            return ''.join(itertools.takewhile('\0'.__ne__, toeof))
-        self.__header['song_name'] = readcstr()
-        self.__header['author_name'] = readcstr()
-        self.__header['song_comment'] = readcstr()
+        if self.__header['id'] == 'YM2!':
+            self.__header['song_name'] = self.__filename
+            self.__header['author_name'] = ''
+            self.__header['song_comment'] = ''
+        else:
+            # YM6!
+            # Thanks http://stackoverflow.com/questions/32774910/clean-way-to-read-a-null-terminated-c-style-string-from-a-file
+            toeof = iter(functools.partial(self.__fd.read, 1), '')
+            def readcstr():
+                return ''.join(itertools.takewhile('\0'.__ne__, toeof))
+            self.__header['song_name'] = readcstr()
+            self.__header['author_name'] = readcstr()
+            self.__header['song_comment'] = readcstr()
 
     def __parse_header(self):
         # See:
         # http://leonard.oxg.free.fr/ymformat.html
         # ftp://ftp.modland.com/pub/documents/format_documentation/Atari%20ST%20Sound%20Chip%20Emulator%20YM1-6%20(.ay,%20.ym).txt
-        ym_header = '> 4s 8s I I H I H I H'
-        s = self.__fd.read(struct.calcsize(ym_header))
-        d = {}
-        (d['id'],
-         d['check_string'],
-         d['nb_frames'],
-         d['song_attributes'],
-         d['nb_digidrums'],
-         d['chip_clock'],
-         d['frames_rate'],
-         d['loop_frame'],
-         d['extra_data'],
-        ) = struct.unpack(ym_header, s)
 
+        # Parse the YM file format identifier first
+        ym_format = self.__fd.read(4)
+        print "YM Format: " + ym_format
+
+        # we support YM2, YM5 and YM6
+        
+        d = {}
+        if ym_format == 'YM2!':
+            print "Version 2"
+            d['id'] = ym_format
+            d['check_string'] = 'LeOnArD!'
+            d['nb_frames'] = (self.__filesize-4)/14
+            d['song_attributes'] = 1 # interleaved
+            d['nb_digidrums'] = 0
+            d['chip_clock'] = 2000000
+            d['frames_rate'] = 50
+            d['loop_frame'] = 0
+            d['extra_data'] = 0
+            d['nb_registers'] = 14
+        else:
+            if ym_format == 'YM6!' or ym_format == 'YM5!':
+                # Then parse the rest based on version
+                ym_header = '> 8s I I H I H I H'
+                s = self.__fd.read(struct.calcsize(ym_header))
+                (d['check_string'],
+                d['nb_frames'],
+                d['song_attributes'],
+                d['nb_digidrums'],
+                d['chip_clock'],
+                d['frames_rate'],
+                d['loop_frame'],
+                d['extra_data'],
+                ) = struct.unpack(ym_header, s)
+
+                d['id'] = ym_format
+                d['nb_registers'] = 16
+            else:
+                raise Exception('Unsupported file format: ' + ym_format)
+
+        # ok, carry on.
         #b0:     Set if Interleaved data block.
         #b1:     Set if the digi-drum samples are signed data.
         #b2:     Set if the digidrum is already in ST 4 bits format.
@@ -639,13 +690,14 @@ class YmReader(object):
         cnt  = self.__header['nb_frames']
         #regs = [self.__fd.read(cnt) for i in xrange(16)]
         regs = []
-        for i in xrange(16):
+        for i in xrange( self.__header['nb_registers']):
             #print "file offset=" + str(self.__fd.tell())  
             regs.append(self.__fd.read(cnt))
 
-        print " Loaded " + str(len(regs)) + " register data chunks"
-        for r in xrange(16):
-            print " Register " + str(r) + " entries = " + str(len(regs[r]))
+        if ENABLE_DEBUG:
+            print " Loaded " + str(len(regs)) + " register data chunks"
+            for r in xrange( d['nb_registers']):
+                print " Register " + str(r) + " entries = " + str(len(regs[r]))
 
         #self.__data=[''.join(f) for f in zip(*regs)]
         self.__data = regs
@@ -665,24 +717,9 @@ class YmReader(object):
         if self.__fd.read(4) != 'End!':
             print '*Warning* End! marker not found after frames'
 
-    def __init__(self, fd):
-
-        # create instance of YM envelope generator
-        self.__ymenv = YmEnvelope()
-        #self.__ymenv.test()
-
-        print "Parsing YM file..."
-
-        self.__fd = fd
-        self.__filename = fd.name
-        self.__parse_header()
-        self.__data = []
-        if not self.__data:
-            self.__read_data()
-            self.__check_eof()        
 
     def dump_header(self):
-        for k in ('id','check_string', 'nb_frames', 'song_attributes',
+        for k in ('id','check_string', 'nb_frames', 'nb_registers', 'song_attributes',
                   'nb_digidrums', 'chip_clock', 'frames_rate', 'loop_frame',
                   'extra_data', 'song_name', 'author_name', 'song_comment'):
             print "{}: {}".format(k, self.__header[k])
@@ -1112,62 +1149,70 @@ class YmReader(object):
             #--------------------------------------------------------------------
             # Process YM file-specific attributes (not YM2149 chip features)
             #--------------------------------------------------------------------
-            # digi drums - in YM format, DD triggers are encoded into bits 4+5 of R3
-            # only 1 DD can be triggered per frame, on a specific voice
-            # TS = Timer Synth
-            # DD = Digidrums
-            # 
+            ts_on = 0
+            dd_on = 0
 
-            # trigger flags for TS and DD
-            # 2 bits where 00=No TS/DD 01=VoiceA 10=VoiceB 11=VoiceC
-            ts_on = (get_register_byte(1) >> 4) & 3
-            dd_on = (get_register_byte(3) >> 4) & 3
+            if self.__header['nb_registers'] == 16:
+                    
+                # digi drums - in YM format, DD triggers are encoded into bits 4+5 of R3
+                # only 1 DD can be triggered per frame, on a specific voice
+                # TS = Timer Synth
+                # DD = Digidrums
+                # 
 
-            #r1 bit b6 is only used if there is a TS running. If b6 is set, YM emulator must restart
-            # the TIMER to first position (you must be VERY sound-chip specialist to hear the difference).
+                # trigger flags for TS and DD
+                # 2 bits where 00=No TS/DD 01=VoiceA 10=VoiceB 11=VoiceC
+                ts_on = (get_register_byte(1) >> 4) & 3
+                dd_on = (get_register_byte(3) >> 4) & 3
 
-            if ts_on:
-                print " ERROR: Timer Synth Trigger - Not handled yet"
+                #r1 bit b6 is only used if there is a TS running. If b6 is set, YM emulator must restart
+                # the TIMER to first position (you must be VERY sound-chip specialist to hear the difference).
+
+                if ts_on:
+                    print " ERROR: Timer Synth Trigger - Not handled yet"
 
 
-            # timer/sample rate encodings
-            # TC = Timer Count  (8-bits)
-            # TP = Timer Prediv (3-bits)
-            ts_tp = (get_register_byte(6) >> 5) & 7
-            ts_tc = get_register_byte(14) & 255
+                # timer/sample rate encodings
+                # TC = Timer Count  (8-bits)
+                # TP = Timer Prediv (3-bits)
+                ts_tp = (get_register_byte(6) >> 5) & 7
+                ts_tc = get_register_byte(14) & 255
 
-            dd_tp = (get_register_byte(8) >> 5) & 7
-            dd_tc = get_register_byte(15) & 255
+                dd_tp = (get_register_byte(8) >> 5) & 7
+                dd_tc = get_register_byte(15) & 255
 
-# 4bits volume value (vmax) for TS is stored in the 4 free bits of r5 (b7-b4)
+    # 4bits volume value (vmax) for TS is stored in the 4 free bits of r5 (b7-b4)
 
-            MFP_FREQ = 2457600
-            MFP_TABLE = [ 1, 4, 10, 16, 50, 64, 100, 200]
+                MFP_FREQ = 2457600
+                MFP_TABLE = [ 1, 4, 10, 16, 50, 64, 100, 200]
 
-            # Handle DD frequency
-            dd_freq = 0
-            if dd_on:
+                # Handle DD frequency
+                dd_freq = 0
+                if dd_on:
 
-                if ENABLE_DEBUG:
-                    print "  dd_tp=" + str(dd_tp)
-                    print "  dd_tc=" + str(dd_tc)
+                    if ENABLE_DEBUG:
+                        print "  dd_tp=" + str(dd_tp)
+                        print "  dd_tc=" + str(dd_tc)
 
-                if dd_tc == 0:
-                    print " ERROR: Digidrum TC value is 0 - unexpected & unhandled"
-                else:             
-                    dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
+                    if dd_tc == 0:
+                        print " ERROR: Digidrum TC value is 0 - unexpected & unhandled"
+                    else:             
+                        dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
 
-            # Handle TS frequency
-            ts_freq = 0
-            if ts_on:
-                if ts_tc == 0:
-                    print " ERROR: Timer Synth TC value is 0 - unexpected & unhandled"
-                else:
-                    ts_freq = (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc
+                # Handle TS frequency
+                ts_freq = 0
+                if ts_on:
+                    if ts_tc == 0:
+                        print " ERROR: Timer Synth TC value is 0 - unexpected & unhandled"
+                    else:
+                        ts_freq = (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc
 
-            # If a DD is triggered on a voice, the volume register for that channel
-            # should be interpreted as a 5-bit sample number rather than a volume
+                # If a DD is triggered on a voice, the volume register for that channel
+                # should be interpreted as a 5-bit sample number rather than a volume
 
+            #---------------------------------------------------
+            # Stats
+            #---------------------------------------------------
             # calculate some additional variables
             ym_tone_a_max = max(ym_tone_a_max, ym_tone_a)
             ym_tone_b_max = max(ym_tone_b_max, ym_tone_b)
