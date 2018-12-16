@@ -34,6 +34,8 @@ FILTER_CHANNEL_C = False
 ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
 ENABLE_VERBOSE = True
 
+ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN data file)
+
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
 # R02 = Channel B Pitch LO (8 bits)
@@ -1921,31 +1923,32 @@ class YmReader(object):
         
         print "   VGM Processing : Written " + str(int(len(vgm_data))) + " bytes, GD3 tag used " + str(gd3_stream_length) + " bytes"
 
-        # write to output file
-        frame_size = 11 #16
-        frame_total = len(raw_stream) / frame_size
-        fh = open(vgm_filename+".bin", 'wb')
-#        fh.write(raw_stream)
+        if ENABLE_BIN:
+            # write an example SN data BIN format output file
+            frame_size = 11 #16
+            frame_total = len(raw_stream) / frame_size
+            fh = open(vgm_filename+".bin", 'wb')
+    #        fh.write(raw_stream)
 
-        frame_count = frame_total #16 # frame_total #33 # number of frames to package at a time
-        #offs = 0
-        for c in xrange(frame_total / frame_count):
-            for r in xrange(frame_size):
-                rdata = bytearray()
-                for n in xrange(frame_count):
-                    rdata.append(raw_stream[c*frame_count*frame_size + n*frame_size + r])
-                #offs += frame_size
-                fh.write(rdata)
- 
-        fh.close()
+            frame_count = frame_total #16 # frame_total #33 # number of frames to package at a time
+            #offs = 0
+            for c in xrange(frame_total / frame_count):
+                for r in xrange(frame_size):
+                    rdata = bytearray()
+                    for n in xrange(frame_count):
+                        rdata.append(raw_stream[c*frame_count*frame_size + n*frame_size + r])
+                    #offs += frame_size
+                    fh.write(rdata)
+    
+            fh.close()
 
-# 16 bytes per frame
-# 16 frames per 256 byte page
-# unpack first frame on init
-# unpack remaining data
-# or 256 x 11 = 2816 bytes, 1 page per register = 256
+            # 16 bytes per frame
+            # 16 frames per 256 byte page
+            # unpack first frame on init
+            # unpack remaining data
+            # or 256 x 11 = 2816 bytes, 1 page per register = 256
 
-        print "   BIN Processing : Written " + str(int(len(raw_stream))) + " bytes"
+            print "   BIN Processing : Written " + str(int(len(raw_stream))) + " bytes"
 
         print "All done."                          
 
