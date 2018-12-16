@@ -19,6 +19,8 @@ ENABLE_NOISE = True         # enables noises to be processed
 ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
 ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
 ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
+ENABLE_ATTENUATION = True   # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
+
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
 SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
 
@@ -1701,18 +1703,47 @@ class YmReader(object):
                     ym_volume_c = 0
 
                 #------------------------------------------------
-                # final mix to SN (for tones, bass & noise)
+                # final output mix of volumes to SN (for tones, bass & noise)
                 #------------------------------------------------
 
-                # tones first
-                sn_attn_out[channel_map_a] = ym_volume_a >> 1
-                sn_attn_out[channel_map_b] = ym_volume_b >> 1
-                sn_attn_out[channel_map_c] = ym_volume_c >> 1
+                # tone volumes first. we're converting the 5-bit YM volumes to 4-bit SN volumes.
+                # SN attenuates in steps of 2dB, whereas YM steps in 1.5dB steps, so find the nearest volume in this table.
+                def get_sn_volume(ym_volume):
+                    sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 10362, 13045, 16422, 20675, 26028, 32767 ]
+
+                    if ENABLE_ATTENUATION:
+                        # this could be a pure lookup table
+                        a = int(get_ym_amplitude(ym_volume) * 32767.0)
+                        dist = 1<<31
+                        index = 0
+                        for i in xrange(16):
+                            l = sn_volume_table[i]
+                            p = a - l
+                            d = p * p
+                            if d < dist and l >= a:
+                                dist = d
+                                index = i
+
+                        #print " ym_volume=" + str(ym_volume) + " sn_vol_simple=" + str(ym_volume>>1) + " sn_vol_nearest=" + str(index)
+                        return index
+                    else:
+                        # simple attentuation map
+                        return (ym_volume >> 1) & 15
+                        
+
+#                for n in xrange(32):
+#                    l = get_sn_volume(n)
+#                    print " YM=" + str(n) + " SN=" + str(l)
+
+
+                sn_attn_out[channel_map_a] = get_sn_volume(ym_volume_a)
+                sn_attn_out[channel_map_b] = get_sn_volume(ym_volume_b)
+                sn_attn_out[channel_map_c] = get_sn_volume(ym_volume_c)
 
                 # then noise or bass
                 if noise_active:
                     # active noise overrides bass
-                    sn_attn_out[3] = noise_volume >> 1
+                    sn_attn_out[3] = get_sn_volume(noise_volume)
                     if bass_active:
                         sn_attn_out[2] = 0 # turn off tone2 while noise is playing if bass is active
                 else:
@@ -1728,7 +1759,7 @@ class YmReader(object):
                                 bass_volume = ym_volume_c
 
                         # output bass settings to SN
-                        sn_attn_out[3] = bass_volume >> 1
+                        sn_attn_out[3] = get_sn_volume(bass_volume)
                         sn_attn_out[2] = 0 # turn off tone2 while bass effect is playing
                         
                     else:
