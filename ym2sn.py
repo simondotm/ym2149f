@@ -21,19 +21,22 @@ ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when 
 ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
 ENABLE_ATTENUATION = True   # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
 
+ENABLE_ENVELOPE_MIX_HACK = True # wierd oddity fix where tone mix is disabled, but envelopes are enabled - EXPERIMENTAL
+
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
 SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 126=6300Hz (GOOD!) 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
 
 
 # legacy/non working debug flags
 FORCE_BASS_CHANNEL = -1     # set this to 0,1 or 2 (A/B/C) or -1, to make a specific channel always take the bass frequency. Not an elegant or useful approach.
-SIM_ENVELOPES = False       # set to true to use full volume for envelepe controlled sounds
+SIM_ENVELOPES = True       # set to true to use full volume for envelepe controlled sounds
 
 FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
 FILTER_CHANNEL_C = False
+FILTER_CHANNEL_N = False    # Noise channel
 
-ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
+ENABLE_DEBUG = True        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
 ENABLE_VERBOSE = True
 
 ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN data file)
@@ -702,7 +705,7 @@ class YmReader(object):
 
         if ENABLE_DEBUG:
             print " Loaded " + str(len(regs)) + " register data chunks"
-            for r in xrange( d['nb_registers']):
+            for r in xrange( self.__header['nb_registers']):
                 print " Register " + str(r) + " entries = " + str(len(regs[r]))
 
         #self.__data=[''.join(f) for f in zip(*regs)]
@@ -893,6 +896,7 @@ class YmReader(object):
         #--------------------------------------------------------------
         def ym_to_sn(ym_tone, is_periodic = False):
 
+            transposed = 0
             # Adjust freq scale & baseline range if periodic noise selected
             baseline_freq = sn_freq_lo
             sn_freq_scale = 1.0
@@ -913,6 +917,7 @@ class YmReader(object):
             if ym_tone == 0:
                 print " ERROR: ym tone is 0"
                 ym_freq = 0
+                target_freq = 0
             else:
                 ym_freq = (float(clock) / 16.0) / float(ym_tone)
 
@@ -920,33 +925,38 @@ class YmReader(object):
 
                 # if the frequency goes below the range
                 # of the SN capabilities, add an octave
-                while ym_freq < baseline_freq:
-                    if ENABLE_DEBUG:
-                        print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
-                    ym_freq *= 2.0
+                target_freq = ym_freq
+                while target_freq < baseline_freq:
+                    #if ENABLE_DEBUG:
+                    #    print " WARNING: Freq too low - Added an octave - from " + str(ym_freq) + " to " + str(ym_freq*2.0) + "Hz"
+                    target_freq *= 2.0
+                    transposed +=  1
 
             # calculate the appropriate SN tone register value
-            if ym_freq == 0:
+            if target_freq == 0:
                 sn_tone = 0
                 sn_freq = 0
             else:
-                sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * sn_freq_scale )
+                sn_tone = float(vgm_clock) / (2.0 * target_freq * 16.0 * sn_freq_scale )
                 # due to the integer maths, some precision is lost at the lower end
                 sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
 
                 # clamp range to 10 bits
                 if sn_tone > 1023:
                     sn_tone = 1023
-                    print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+                    print " WARNING: Clipped SN tone to 1023 (target_freq="+str(target_freq)+" Hz)"
                     # this could result in bad tuning, depending on why it occurred. better to reduce freq?
                 if sn_tone < 1:
                     sn_tone = 1
-                    print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
+                    print " WARNING: Clipped SN tone to 1 (target_freq="+str(target_freq)+" Hz)"
 
                 sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
 
             if ENABLE_DEBUG:
-                print "  ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + " sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq)
+                sp = ""
+                if is_periodic:
+                    sp = " (PERIODIC)"
+                print "   ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + ", sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq) + ", transposed " + str(transposed) + " octaves" + sp
 
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
@@ -1047,7 +1057,9 @@ class YmReader(object):
 
             raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
 
+        #--------------------------------------------------------------
         # YM stream pre-processing code
+        #--------------------------------------------------------------
         channel_lof_a = 0
         channel_lof_b = 0
         channel_lof_c = 0
@@ -1108,7 +1120,9 @@ class YmReader(object):
         print "---"
 
 
+        #--------------------------------------------------------------
         # YM stream processing code
+        #--------------------------------------------------------------
         # Scan the YM stream one frame at a time
         for i in xrange(cnt):
             s = "Frame="+'{:05d}'.format(i)+" "
@@ -1163,18 +1177,36 @@ class YmReader(object):
             ym_mix_tone_b = (ym_mixer & (1<<1)) == 0
             ym_mix_tone_c = (ym_mixer & (1<<2)) == 0
 
-            if True:   # does not work
-                if FILTER_CHANNEL_A:
-                    ym_mix_tone_a = 0
-                if FILTER_CHANNEL_B:
-                    ym_mix_tone_b = 0
-                if FILTER_CHANNEL_C:
-                    ym_mix_tone_c = 0
-
-
             ym_mix_noise_a = (ym_mixer & (1<<3)) == 0
             ym_mix_noise_b = (ym_mixer & (1<<4)) == 0
             ym_mix_noise_c = (ym_mixer & (1<<5)) == 0
+
+            # oddity with "nd-ui.ym" requires this. data shows envelopes enabled on a channel, but tone mixer disabled. a wierd/useless combination. 
+            if ENABLE_ENVELOPE_MIX_HACK:
+                if ym_envelope_a:
+                    ym_mix_tone_a = True
+                if ym_envelope_b:
+                    ym_mix_tone_b = True
+                if ym_envelope_c:
+                    ym_mix_tone_c = True
+
+
+            if True:   # does not work
+                if FILTER_CHANNEL_A:
+                    ym_mix_tone_a = False
+                    ym_mix_noise_a = False
+                if FILTER_CHANNEL_B:
+                    ym_mix_tone_b = False
+                    ym_mix_noise_b = False
+                if FILTER_CHANNEL_C:
+                    ym_mix_tone_c = False
+                    ym_mix_noise_c = False
+                if FILTER_CHANNEL_N:
+                    ym_mix_noise_a = False
+                    ym_mix_noise_b = False
+                    ym_mix_noise_c = False
+
+
 
 
 
@@ -1248,21 +1280,7 @@ class YmReader(object):
                 # If a DD is triggered on a voice, the volume register for that channel
                 # should be interpreted as a 5-bit sample number rather than a volume
 
-            #---------------------------------------------------
-            # Stats
-            #---------------------------------------------------
-            # calculate some additional variables
-            ym_tone_a_max = max(ym_tone_a_max, ym_tone_a)
-            ym_tone_b_max = max(ym_tone_b_max, ym_tone_b)
-            ym_tone_c_max = max(ym_tone_c_max, ym_tone_c)
 
-            ym_tone_a_min = min(ym_tone_a_min, ym_tone_a)
-            ym_tone_b_min = min(ym_tone_b_min, ym_tone_b)
-            ym_tone_c_min = min(ym_tone_c_min, ym_tone_c)
-
-            ym_freq_a = get_ym_frequency(ym_tone_a)
-            ym_freq_b = get_ym_frequency(ym_tone_b)
-            ym_freq_c = get_ym_frequency(ym_tone_c)
             
 
 
@@ -1285,9 +1303,9 @@ class YmReader(object):
 
             # volume
             s += ", Vol ["
-            s += " " + '{:2d}'.format( ym_volume_a )
-            s += " " + '{:2d}'.format( ym_volume_b )
-            s += " " + '{:2d}'.format( ym_volume_c )
+            s += " " + '{:2d}'.format( ym_volume_a >> 1 )
+            s += " " + '{:2d}'.format( ym_volume_b >> 1 )
+            s += " " + '{:2d}'.format( ym_volume_c >> 1 )
             s += " ]"
 
             # mixer
@@ -1342,9 +1360,6 @@ class YmReader(object):
             s += " " + '{:6d}'.format( ym_envelope_f ) + " (" + '{:9.2f}'.format( ehz ) + "Hz)"            
             s += " ]"
 
-            ym_env_freq_min = min(ym_env_freq_min, ehz)
-            ym_env_freq_max = max(ym_env_freq_max, ehz)
-
 
             # Digi drums extended info (not chip-related, YM format only)
             if dd_on:
@@ -1362,14 +1377,33 @@ class YmReader(object):
                 s += " " +  '{:6d}'.format(dd_freq)
                 s += " ]"
 
+            # output YM frame data before we mess with it.
+            print s  
+
+            #---------------------------------------------------
+            # Stats
+            #---------------------------------------------------
+            # calculate some additional variables
+            ym_tone_a_max = max(ym_tone_a_max, ym_tone_a)
+            ym_tone_b_max = max(ym_tone_b_max, ym_tone_b)
+            ym_tone_c_max = max(ym_tone_c_max, ym_tone_c)
+
+            ym_tone_a_min = min(ym_tone_a_min, ym_tone_a)
+            ym_tone_b_min = min(ym_tone_b_min, ym_tone_b)
+            ym_tone_c_min = min(ym_tone_c_min, ym_tone_c)
+
+            ym_freq_a = get_ym_frequency(ym_tone_a)
+            ym_freq_b = get_ym_frequency(ym_tone_b)
+            ym_freq_c = get_ym_frequency(ym_tone_c)
+
+            ym_env_freq_min = min(ym_env_freq_min, ehz)
+            ym_env_freq_max = max(ym_env_freq_max, ehz)
+
+            if dd_on:
+
                 ym_dd_freq_min = min(ym_dd_freq_min, dd_freq)
                 ym_dd_freq_max = max(ym_dd_freq_max, dd_freq)
 
-            print s  
-
-
-
-        
  
             #------------------------------------------------
             # output VGM SN76489 equivalent data
@@ -1684,7 +1718,7 @@ class YmReader(object):
                 else:
                     # if envelopes are not enabled and we want to simulate envelopes, just use max volume
                     # it's not a great simulation, but prevents some audio being muted
-                    if SIM_ENVELOPES == 1:
+                    if SIM_ENVELOPES:
                         if ym_envelope_a:
                             ym_volume_a = 31
                         if ym_envelope_b:
@@ -1692,6 +1726,8 @@ class YmReader(object):
                         if ym_envelope_c:
                             ym_volume_c = 31
 
+                #ym_volume_a = 31
+                #ym_mix_tone_a = True
 
                 #------------------------------------------------
                 # noise volume calculation
@@ -1704,13 +1740,13 @@ class YmReader(object):
                 if ENABLE_NOISE and noise_active:
 
                     noise_amplitude = 0.0
-                    if ym_mix_noise_a: # and not ym_mix_tone_a:
+                    if ym_mix_noise_a:
                         noise_amplitude += get_ym_amplitude(ym_volume_a)
                         #noise_volume += ym_volume_a
-                    if ym_mix_noise_b: # and not ym_mix_tone_b:
+                    if ym_mix_noise_b:
                         noise_amplitude += get_ym_amplitude(ym_volume_b)
                         #noise_volume += ym_volume_b
-                    if ym_mix_noise_c: # and not ym_mix_tone_c:
+                    if ym_mix_noise_c:
                         noise_amplitude += get_ym_amplitude(ym_volume_c)
                         #noise_volume += ym_volume_b
 
