@@ -116,6 +116,8 @@ ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN
 # Could possibly do the digidrums this way too.
 
 
+# Setup attenuation mapping tables
+
 # map 4 or 5-bit logarithmic volume to 8-bit linear volume
 ym_amplitude_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
 sn_amplitude_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
@@ -145,7 +147,7 @@ def get_ym_volume(a):
     #    print "TITS"
     v = min(31, v)
     v = max(0, v)
-    return v
+    return v      
 
 
 
@@ -836,7 +838,12 @@ class YmReader(object):
         sn_attn_latch = [ 0, 0, 0, 0 ]
         sn_tone_latch = [ 0, 0, 0, 0 ]
 
-        # Setup attenuation mapping tables
+
+
+
+  
+        
+        
         # SN attenuates in steps of 2dB, whereas YM steps in 1.5dB steps, so find the nearest volume in this table.
         # Not sure this is ideal, because without envelopes, some tunes only use the 4 bit levels, and they dont use all 16-levels of the output SN
         # but technically is a better representation? hmm.... revist
@@ -861,6 +868,8 @@ class YmReader(object):
 
         # Helper functions
 
+
+        # get the nearest 4-bit logarithmic volume to the given 5-bit ym_volume
         def get_sn_volume(ym_volume):
             if ENABLE_ATTENUATION:
                 # this could be a pure lookup table
@@ -1142,9 +1151,14 @@ class YmReader(object):
 
             # volume attenuation level (if bit 4 is clear)
             # we convert to 5-bits so we're always working in higher precision
-            ym_volume_a = (get_register_byte(8) & 15) << 1
+            ym_volume_a = (get_register_byte(8) & 15) << 1 
             ym_volume_b = (get_register_byte(9) & 15) << 1
             ym_volume_c = (get_register_byte(10) & 15) << 1
+
+            # ensure the new 5-bit value occupies the full 5-bit range (0-31 instead of 0-30) by OR'ing bit 1 to bit 0
+            ym_volume_a |= (ym_volume_a >> 1 & 1)
+            ym_volume_b |= (ym_volume_b >> 1 & 1)
+            ym_volume_c |= (ym_volume_c >> 1 & 1)
 
             # envelope attentuation mode flags
             ym_envelope_a = get_register_byte( 8) & 16
