@@ -19,7 +19,7 @@ ENABLE_NOISE = True         # enables noises to be processed
 ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
 ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
 ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
-ENABLE_ATTENUATION = True   # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
+ENABLE_ATTENUATION = False   # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
 
 ENABLE_ENVELOPE_MIX_HACK = True # wierd oddity fix where tone mix is disabled, but envelopes are enabled - EXPERIMENTAL
 
@@ -119,35 +119,70 @@ ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN
 # Setup attenuation mapping tables
 
 # map 4 or 5-bit logarithmic volume to 8-bit linear volume
-ym_amplitude_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
-sn_amplitude_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
+#ym_amplitude_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
+#sn_amplitude_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
+
+ym_amplitude_table = [
+    0.0, 0.0,
+    0.00465400167849, 0.00772106507973,
+    0.0109559777218, 0.0139620050355,
+    0.0169985503929, 0.0200198367285,
+    0.024368657969, 0.029694056611,
+    0.0350652323186, 0.0403906309606,
+    0.0485389486534, 0.0583352407111,
+    0.0680552376593, 0.0777752346075,
+    0.0925154497597, 0.111085679408,
+    0.129747463188, 0.148485542077,
+    0.17666895552, 0.211551079576,
+    0.246387426566, 0.281101701381,
+    0.333730067903, 0.400427252613,
+    0.467383840696, 0.53443198291,
+    0.635172045472, 0.75800717174,
+    0.879926756695, 1.0 ]
 
 # YM Attentuation at normalized 1V amplitude is -0.75 dB per step for 5-bit envelopes and -1.5 dB per step for the 4-bit fixed levels
 # When we average volumes (eg. for noise mixing or envelope sampling) we cant just average the linear value because they represent logarithmic attenuation
 
 # get the normalized linear (float) amplitude for a 5 bit level
 def get_ym_amplitude(v):
-    if v == 0:
-        a = 0.0
+    if True:
+        return ym_amplitude_table[v]
     else:
-        a = math.pow(10, ((-0.75*(31-v))/10) )
-    #print " Amplitude of volume " + str(v) + " is " + str(a)
-    a = min(1.0, a)
-    a = max(0.0, a)
-    return a
+        if v == 0:
+            a = 0.0
+        else:
+            a = math.pow(10, ((-0.75*(31-v))/10) )
+        #print " Amplitude of volume " + str(v) + " is " + str(a)
+        a = min(1.0, a)
+        a = max(0.0, a)
+        return a
 
 # given an amplitude, return the nearest 5-bit volume level
 def get_ym_volume(a):
-    if (a == 0.0):
-        v = 0
-    else:
-        v = int( 31 - ( (10*math.log(a, 10)) / -0.75 ) )
-    #print "  Volume of amplitude " + str(a) + " is " + str(v)
-    #if v > 31:
-    #    print "TITS"
-    v = min(31, v)
-    v = max(0, v)
-    return v      
+    if True:
+        dist = 1<<31
+        index = 0
+        for n in xrange(32):
+            ya = ym_amplitude_table[n]
+            p = a - ya
+            d = p * p
+            # we always round to the nearest louder level (so we are never quieter than target level)
+            if d < dist and ya >= a:
+                dist = d
+                index = n
+
+        return index
+    else:        
+        if (a == 0.0):
+            v = 0
+        else:
+            v = int( 31 - ( (10*math.log(a, 10)) / -0.75 ) )
+        #print "  Volume of amplitude " + str(a) + " is " + str(v)
+        #if v > 31:
+        #    print "TITS"
+        v = min(31, v)
+        v = max(0, v)
+        return v      
 
 
 
