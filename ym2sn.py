@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-# YM file format parser
-# based on original code from https://github.com/FlorentFlament/ym2149-streamer
+# .YM files (YM2149 sound chip) to SN76489 .VGM music file format conversion utility
+# was originated based on code from https://github.com/FlorentFlament/ym2149-streamer
+# Almost completely rewritten by https://github.com/simondotm/
+
 
 import functools
 import itertools
@@ -117,11 +119,16 @@ ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN
 
 
 # Setup attenuation mapping tables
+# When we average volumes (eg. for noise mixing or envelope sampling) we cant just average the linear value because they represent logarithmic attenuation
+# So we use tables to convert between the logarithmic attenuation and the linear output
+# YM Attentuation at normalized 1V amplitude according to the datasheet is -0.75 dB per step for 5-bit envelopes and -1.5 dB per step for the 4-bit fixed levels
 
 # map 4 or 5-bit logarithmic volume to 8-bit linear volume
 #ym_amplitude_table = [ 0x00, 0x01, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0D, 0x10, 0x13, 0x16, 0x1A, 0x1F, 0x25, 0x2C, 0x34, 0x3D, 0x48, 0x54, 0x63, 0x74, 0x88, 0x9F, 0xBA, 0xD9, 0xFF ]
 #sn_amplitude_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
 
+# Taken from: https://github.com/true-grue/ayumi/blob/master/ayumi.c
+# However, it doesn't marry with the YM2149 spec sheet, nor with the anecdotal reports that the YM attentuation steps in -1.5dB increments. Still, I'm gonna run with the emulator version.
 ym_amplitude_table = [
     0.0, 0.0,
     0.00465400167849, 0.00772106507973,
@@ -140,8 +147,6 @@ ym_amplitude_table = [
     0.635172045472, 0.75800717174,
     0.879926756695, 1.0 ]
 
-# YM Attentuation at normalized 1V amplitude is -0.75 dB per step for 5-bit envelopes and -1.5 dB per step for the 4-bit fixed levels
-# When we average volumes (eg. for noise mixing or envelope sampling) we cant just average the linear value because they represent logarithmic attenuation
 
 # get the normalized linear (float) amplitude for a 5 bit level
 def get_ym_amplitude(v):
@@ -781,6 +786,7 @@ class YmReader(object):
         # prepare the YM file parser
         clock = self.__header['chip_clock']
         cnt  = self.__header['nb_frames']
+        frame_rate = self.__header['frames_rate']
 
         regs = self.__data
 
@@ -1169,7 +1175,15 @@ class YmReader(object):
         #--------------------------------------------------------------
         # Scan the YM stream one frame at a time
         for i in xrange(cnt):
-            s = "Frame="+'{:05d}'.format(i)+" "
+            secs = i / frame_rate
+            mins = int(secs / 60)
+            secs = secs % 60
+
+            s = "Frame="
+            s += '{:05d}'.format(i)+" "
+            s += "("
+            s += '{:02d}'.format(mins)+":"
+            s += '{:02d}'.format(secs)+")"
 
 
 
