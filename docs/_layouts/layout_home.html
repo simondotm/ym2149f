@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>YM2149</title>
+    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" />    
+    <link rel="stylesheet" href="{{ site.baseurl }}/css/bulma.css" type="text/css">
+    <script type="text/javascript" src="{{ site.baseurl }}/js/jquery1.11.min.js"></script>
+    <script type="text/javascript" src="{{ site.baseurl }}/js/jquery.details.min.js"></script>
+    <script type="text/javascript" src="{{ site.baseurl }}/js/scriptprocessor_player.min.js"></script>
+    
+    <script>window.openDetails=false;</script>
+    <script type="text/javascript" src="{{ site.baseurl }}/js/mini_display.js"></script>
+    <script type="text/javascript" src="{{ site.baseurl }}/js/mini_controls.js"></script>
+
+    <script type="text/javascript" src="{{ site.baseurl }}/js/backend_vgm.js"></script>    
+    <script>
+        var playerControls;
+        var	songDisplay;
+        
+        var songs = [
+            // add your music files here, e.g.:
+            {% for image in site.static_files %}
+                {% if image.path contains 'content/vgm' %}
+                    '{{ site.baseurl }}{{ image.path }}',
+                {% endif %}
+            {% endfor %}
+        ];
+        
+        // configure what music infos to display in SongDisplay
+        VGMDisplayAccessor = (function(){ var $this = function (doGetSongInfo) {
+                $this.base.call(this, doGetSongInfo);
+            }; 
+            extend(DisplayAccessor, $this, {
+                getDisplayTitle: function() 	{ return this.getSongInfo().title;},
+                getDisplaySubtitle: function() 	{ return this.getSongInfo().author;},
+                getDisplayLine1: function() { return this.getSongInfo().comment;},
+                getDisplayLine2: function() { return this.getSongInfo().program; },
+                getDisplayLine3: function() { return ""; }
+            });	return $this; })();
+                
+        // link player events to "controls" and "display"
+        function doOnTrackEnd(){
+            if (playerControls) playerControls.playNextSong();  
+        }
+        function doOnTrackReadyToPlay(){ 	
+            ScriptNodePlayer.getInstance().play();
+            songDisplay.redrawSongInfo();
+        }
+        function doOnPlayerReady() {
+            if (playerControls) playerControls.playNextSong();
+        }
+        function init() {
+            // --------------------------- VGM music player -----------------------
+            var basePath= '';		// not needed here
+            ScriptNodePlayer.createInstance(new VgmBackendAdapter(), basePath, ["VGMPlay.ini", "yrw801.rom"], true,
+                                                doOnPlayerReady, doOnTrackReadyToPlay, doOnTrackEnd);
+                
+            playerControls= new BasicPlayerControls(songs, true, false,
+                        (function(someSong) {
+                            var arr= someSong.split(";");	
+                            var boostVolume= arr.length>1?parseInt(arr[1]):0;		
+                            var url= arr[0];
+                            
+                            var options= {};
+                            options.track= 0;// archives are not supported and *.vgz/*.vgm contain always 1 track
+                            options.boostVolume= boostVolume;
+                            return [url, options];
+                        }),
+                        0
+                    );
+        
+            var yellow= 0xf4cb25;
+            var red= 0xef210a;
+            var blue= 0x1b1088;
+            var purple= 0x630f64;
+            
+            songDisplay= new SongDisplay(new VGMDisplayAccessor((function(){return playerControls.getSongInfo();})), 
+                                        [yellow, red, purple, blue, blue], 1, 0.1, (function(){playerControls.animate()}));
+        
+            playerControls.playNextSong();
+        }
+
+        var selectedSong = null;
+        function myPlaySong(songName)
+        {
+          if (selectedSong != null)
+          {
+            var item = document.getElementById(selectedSong);
+      		  item.removeAttribute("class", "is-selected");	            
+          }
+
+          var item = document.getElementById(songName);
+          item.setAttribute("class", "is-selected");	
+          selectedSong = songName;	          
+        }
+        </script>    
+</head>
+
+<body onload="init();">
+    <nav class="navbar is-fixed-top is-danger" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+          <a class="navbar-item" href="{{ site.baseurl }}/">
+            <img src="{{ site.baseurl }}/img/ym2149.png" width="112" height="28">
+          </a>
+
+
+
+          <div id="spectrum" >
+                              <div id="moz-reflect-spectrum"><canvas id="spectrumCanvas" width="800" height="40"></canvas></div>
+                      </div>   
+                      <div class="navbar-item">       
+                      <span id="controls"></span>
+                      </div>
+
+          <a role="button" class="navbar-burger burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+          </a>
+        </div>
+      <!--
+        <div id="navbarBasicExample" class="navbar-menu">
+          <div class="navbar-start">
+            <a class="navbar-item">
+              Home
+            </a>
+      
+            <a class="navbar-item">
+              Documentation
+            </a>
+      
+            <div class="navbar-item has-dropdown is-hoverable">
+              <a class="navbar-link">
+                More
+              </a>
+      
+              <div class="navbar-dropdown">
+                <a class="navbar-item">
+                  About
+                </a>
+                <a class="navbar-item">
+                  Jobs
+                </a>
+                <a class="navbar-item">
+                  Contact
+                </a>
+                <hr class="navbar-divider">
+                <a class="navbar-item">
+                  Report an issue
+                </a>
+              </div>
+            </div>
+          </div>
+        -->
+          <div class="navbar-end">
+
+            <div class="media-content">
+                    <p id="vgmTitle" class="title is-4"></p>
+                    <p id="vgmArtist" class="subtitle is-6"></p>
+                  </div>
+
+
+
+            <!--
+            <div class="navbar-item">
+              <div class="buttons">
+                <a class="button is-primary">
+                  <strong>Sign up</strong>
+                </a>
+                <a class="button is-light">
+                  Log in
+                </a>
+              </div>
+            </div>
+          -->
+          </div>
+
+        </div>
+      </nav>
+
+
+      <section class="main-content columns is-fullheight">
+
+
+        <aside class="column is-2 is-narrow-mobile is-fullheight section is-hidden-mobile">
+
+          <section class="section">
+            <div class="card">
+                <div class="card-content">
+                    <div id="drop" class="drop"><img src="{{ site.baseurl }}/img/chip.png" width=270 height=270/><p>Drop VGMs here to listen</p></div><!--see BasicPlayerControls-->            
+                </div>
+            </div>
+          </section>
+          <section class="section ">
+              <div class="card">
+
+                <div class="card-content">
+
+
+
+
+                </div>              
+
+                <div class="card-image">
+                      <div id="logo">
+                              <!-- in new Chrome the SHIT reflections disapear dependig on the canvas height.. what a fucking joke -->
+                              <div id="moz-reflect-logo"><canvas  id="logoCanvas"  width="220" height="100"></canvas></div>	
+                      </div>
+                      
+
+                  </div>
+
+
+              </div>
+          </section>          
+        </aside>
+
+
+
+
+        <section class="section">
+          <div class="container ">
+
+
+              <div class="card">
+                <div class="card-content">
+              <table class="table is-striped is-hoverable is-fullwidth">
+                <thead>
+                  <tr>
+                    <th>Control</th>
+                    <th>Length</th>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Tags</th>
+                    <th>File</th>
+
+                  </tr>
+                </thead>
+                <tbody>
+
+
+                  {% for vgm in site.data.content.content %}
+                    <tr id="{{ site.baseurl }}{{ vgm.path }}">
+                      <td>  <button class="button is-info is-rounded " onclick="playerControls.playSong('{{ site.baseurl }}{{ vgm.path }}')"><strong class="fa fa-play"></strong></a></button>    </td>  
+                      <td>{{ vgm.length }}</td>
+                      <td>{{ vgm.title }}</td>
+                      <td>{{ vgm.artist }}</td>
+                      <td>
+                <div class="tags are-medium">
+                  <span class="tag is-rounded is-dark">{{ vgm.chip }}</span>
+                  <span class="tag is-rounded is-dark">{{ vgm.clock }}</span>
+                  <span class="tag is-rounded is-dark">{{ vgm.rate }}</span>
+                </div></td>
+                    <td>
+                    
+                      <p class="control">
+                        <a class="button is-info" href="{{ site.baseurl }}{{ vgm.path }}">
+                          <strong class="fa fa-download"></strong>
+                        </a>
+                      </p>
+                    </td>
+                  </tr>
+
+                {% endfor %}    
+                </tbody>
+              </table>
+            </div>
+
+              </div>
+
+              <!-- container -->
+          </div> 
+        </section>
+
+
+
+      </section>
+
+      <footer class="footer">
+  <div class="content has-text-centered">
+    <p>
+      <strong>YM2149 Music Converted to SN76489</strong> by <a href="https://github.com/simondotm">Simon Morris</a>. The <a href="https://github.com/simondotm/ym2149f">source code</a> is licensed
+      <a href="http://opensource.org/licenses/mit-license.php">MIT</a>. 
+      Credits to Juergen Wothke for the fantastic <a href="https://github.com/wothke/vgmplay-0.40.6">Web VGM Player</a>
+    </p>
+    <p>
+      <a class="button" href="https://twitter.com/simondotm">
+        <span class="icon is-small">
+          <i class="fa fa-twitter"></i>
+        </span>
+      </a>
+      <a class="button" href="https://www.facebook.com/bitshiftrs/">
+        <span class="icon is-small">
+          <i class="fa fa-facebook"></i>
+        </span>
+      </a>
+      <a class="button" href="https://github.com/simondotm/ym2149f">
+        <span class="icon is-small">
+          <i class="fa fa-github"></i>
+        </span>
+      </a>      
+    </p>
+  </div>
+</footer>      
+</body>
+</html>
