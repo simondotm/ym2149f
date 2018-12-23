@@ -246,6 +246,7 @@
                         <th>Length</th>
                         <th>Title</th>
                         <th>Author</th>
+                        <th>Likes</th>
                         <th>Tags</th>
                         <th>File</th>
 
@@ -260,8 +261,17 @@
                           <td>{{ vgm.length }}</td>
                           <td>{{ vgm.title }}</td>
                           <td>{{ vgm.artist }}</td>
+
                           <td>
-                    <div class="tags are-medium">
+                              <a class="button is-outlined is-dark is-rounded is-small">
+                                  <span class="icon is-small">
+                                    <i class="fa fa-heart"></i>
+                                  </span>
+                                  <span><strong>123</strong></span>
+                                </a>                         
+                          </td>
+                          <td>
+                    <div class="tags are-normal">
                       <span class="tag is-rounded is-dark">{{ vgm.chip }}</span>
                       <span class="tag is-rounded is-dark">{{ vgm.clock }}</span>
                       <span class="tag is-rounded is-dark">{{ vgm.rate }}</span>
