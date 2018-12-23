@@ -1,385 +1,433 @@
 content:
-  - path: /content/vgm/150MPH.vgm
+  - id: 0
+    path: /content/vgm/150MPH.vgm
     title: '150mph'
     artist: 'TAO of ACF'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m7s
+    length: '05:07'
 
-  - path: /content/vgm/ace2.vgm
+  - id: 1
+    path: /content/vgm/ace2.vgm
     title: 'Ace 2'
     artist: 'Jochen Hippel (Rob Hubbard)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m52s
+    length: '05:52'
 
-  - path: /content/vgm/androids.vgm
+  - id: 2
+    path: /content/vgm/androids.vgm
     title: 'androids'
     artist: 'TAO of ACF'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m56s
+    length: '02:56'
 
-  - path: /content/vgm/ark.vgm
+  - id: 3
+    path: /content/vgm/ark.vgm
     title: 'unknown'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m58s
+    length: '03:58'
 
-  - path: /content/vgm/axelf.vgm
+  - id: 4
+    path: /content/vgm/axelf.vgm
     title: 'Axel F'
     artist: 'Jochen Hippel (Mad Max)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m47s
+    length: '02:47'
 
-  - path: /content/vgm/beatnick.vgm
+  - id: 5
+    path: /content/vgm/beatnick.vgm
     title: 'music\test\BEATNICK.ym'
     artist: ''
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 6m13s
+    length: '06:13'
 
-  - path: /content/vgm/bestpart.vgm
+  - id: 6
+    path: /content/vgm/bestpart.vgm
     title: 'Best part of the creation NODIGI'
     artist: 'Gunnar Gaubatz (Big Alec/DF)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m12s
+    length: '03:12'
 
-  - path: /content/vgm/CPCTL10A.vgm
+  - id: 7
+    path: /content/vgm/CPCTL10A.vgm
     title: 'CPCT Tunes'
     artist: 'Unknown'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m54s
+    length: '04:54'
 
-  - path: /content/vgm/cybernoid2.vgm
+  - id: 8
+    path: /content/vgm/cybernoid2.vgm
     title: 'Cybernoid 2 Main tune'
     artist: 'Jochen Hippel (Original: MoN)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m45s
+    length: '05:45'
 
-  - path: /content/vgm/darkside1.vgm
+  - id: 9
+    path: /content/vgm/darkside1.vgm
     title: 'unknown'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m2s
+    length: '02:02'
 
-  - path: /content/vgm/icepalace.vgm
+  - id: 10
+    path: /content/vgm/icepalace.vgm
     title: 'Beyond Ice Palace'
     artist: 'David Whittaker'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m53s
+    length: '04:53'
 
-  - path: /content/vgm/labello.vgm
+  - id: 11
+    path: /content/vgm/labello.vgm
     title: 'Labello'
     artist: 'Mad Max'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m50s
+    length: '04:50'
 
-  - path: /content/vgm/led1.vgm
+  - id: 12
+    path: /content/vgm/led1.vgm
     title: 'Led Storm'
     artist: 'Tim Follin'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m42s
+    length: '02:42'
 
-  - path: /content/vgm/led6.vgm
+  - id: 13
+    path: /content/vgm/led6.vgm
     title: 'Led Storm'
     artist: 'Tim Follin'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 1m53s
+    length: '01:53'
 
-  - path: /content/vgm/LETHAL7.vgm
+  - id: 14
+    path: /content/vgm/LETHAL7.vgm
     title: 'Lethal XCess Music 7'
     artist: 'Jochen Hippel (MadMax)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m23s
+    length: '02:23'
 
-  - path: /content/vgm/MAIN.vgm
+  - id: 15
+    path: /content/vgm/MAIN.vgm
     title: 'Synergy MainMenu.'
     artist: 'Scavenger / Synergy'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m4s
+    length: '03:04'
 
-  - path: /content/vgm/MMLAB.vgm
+  - id: 16
+    path: /content/vgm/MMLAB.vgm
     title: 'unknown'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 6m12s
+    length: '06:12'
 
-  - path: /content/vgm/mongolia.vgm
+  - id: 17
+    path: /content/vgm/mongolia.vgm
     title: 'There are many sheep in outer-Mongolia'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m33s
+    length: '03:33'
 
-  - path: /content/vgm/music1.vgm
+  - id: 18
+    path: /content/vgm/music1.vgm
     title: 'New SID tune 1.'
     artist: 'MAD-MAX (Jochen Hippel) using SID !!'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m43s
+    length: '05:43'
 
-  - path: /content/vgm/music2.vgm
+  - id: 19
+    path: /content/vgm/music2.vgm
     title: 'New SID tune 2.'
     artist: 'MAD-MAX (Jochen Hippel) using SID !!'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m1s
+    length: '05:01'
 
-  - path: /content/vgm/nd-ui.vgm
+  - id: 20
+    path: /content/vgm/nd-ui.vgm
     title: 'Nostalgic-O-Demo Union-Intro (Think Twice #2).'
     artist: 'TAO of ACF (Jeroen Kimmel)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 0m38s
+    length: '00:38'
 
-  - path: /content/vgm/ODYSSEY.vgm
+  - id: 21
+    path: /content/vgm/ODYSSEY.vgm
     title: 'Synergy Odyssey Screen.'
     artist: 'Scavenger / Synergy'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m30s
+    length: '05:30'
 
-  - path: /content/vgm/prehis12.vgm
+  - id: 22
+    path: /content/vgm/prehis12.vgm
     title: 'Prehistoric Tale: Leveltune 6'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m48s
+    length: '02:48'
 
-  - path: /content/vgm/prehis15.vgm
+  - id: 23
+    path: /content/vgm/prehis15.vgm
     title: 'music\test\PREHIS15.ym'
     artist: ''
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 6m19s
+    length: '06:19'
 
-  - path: /content/vgm/SANXION.vgm
+  - id: 24
+    path: /content/vgm/SANXION.vgm
     title: 'Sanxion / Thalamusic'
     artist: 'Tao (Rob Hubbard)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m45s
+    length: '05:45'
 
-  - path: /content/vgm/sanxionv2.vgm
+  - id: 25
+    path: /content/vgm/sanxionv2.vgm
     title: 'Sanxion (loader)'
     artist: 'Jochen Hippel (Rob Hubbard)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 5m40s
+    length: '05:40'
 
-  - path: /content/vgm/sanxion_a.vgm
+  - id: 26
+    path: /content/vgm/sanxion_a.vgm
     title: 'Sanxion (Cover)'
     artist: 'Big Alec'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m59s
+    length: '02:59'
 
-  - path: /content/vgm/song_008.vgm
+  - id: 27
+    path: /content/vgm/song_008.vgm
     title: 'Xenon #1'
     artist: 'David Whittaker'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m16s
+    length: '04:16'
 
-  - path: /content/vgm/song_020.vgm
+  - id: 28
+    path: /content/vgm/song_020.vgm
     title: 'Tex Amiga Demo - Overscan Screen'
     artist: 'Mad Max'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m18s
+    length: '02:18'
 
-  - path: /content/vgm/SONG_085.vgm
+  - id: 29
+    path: /content/vgm/SONG_085.vgm
     title: 'I Want Sid'
     artist: '505'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m21s
+    length: '02:21'
 
-  - path: /content/vgm/SONG_091.vgm
+  - id: 30
+    path: /content/vgm/SONG_091.vgm
     title: 'Scavenger Elite'
     artist: 'Iso'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 0m46s
+    length: '00:46'
 
-  - path: /content/vgm/SONG_194.vgm
+  - id: 31
+    path: /content/vgm/SONG_194.vgm
     title: 'Union Demo - Megadist'
     artist: 'Mad Max'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m18s
+    length: '02:18'
 
-  - path: /content/vgm/song_196.vgm
+  - id: 32
+    path: /content/vgm/song_196.vgm
     title: 'Tangram #1'
     artist: 'Mad Max'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m29s
+    length: '03:29'
 
-  - path: /content/vgm/song_318.vgm
+  - id: 33
+    path: /content/vgm/song_318.vgm
     title: 'Airball remix'
     artist: 'Mad Max'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 1m28s
+    length: '01:28'
 
-  - path: /content/vgm/song_350.vgm
+  - id: 34
+    path: /content/vgm/song_350.vgm
     title: 'Amberstar #12'
     artist: 'Mad Max'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m3s
+    length: '03:03'
 
-  - path: /content/vgm/SYNER5.vgm
+  - id: 35
+    path: /content/vgm/SYNER5.vgm
     title: 'Synergy DBA Music Disk (5)'
     artist: 'Scavenger'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m42s
+    length: '03:42'
 
-  - path: /content/vgm/SYNERG2.vgm
+  - id: 36
+    path: /content/vgm/SYNERG2.vgm
     title: 'Wicked Polygons Part 2'
     artist: 'Scavenger'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 14m22s
+    length: '14:22'
 
-  - path: /content/vgm/tale7.vgm
+  - id: 37
+    path: /content/vgm/tale7.vgm
     title: 'Prehistoric Tale: Leveltune 1'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m36s
+    length: '02:36'
 
-  - path: /content/vgm/TCAT.vgm
+  - id: 38
+    path: /content/vgm/TCAT.vgm
     title: 'Thundercats'
     artist: 'Rob Hubbard'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m12s
+    length: '04:12'
 
-  - path: /content/vgm/The Addicts Anthem.vgm
+  - id: 39
+    path: /content/vgm/The Addicts Anthem.vgm
     title: 'The Addicts Anthem.vgm'
     artist: 'Unknown'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m15s
+    length: '04:15'
 
-  - path: /content/vgm/THINGS.vgm
+  - id: 40
+    path: /content/vgm/THINGS.vgm
     title: 'Your mind is my ashtray!'
     artist: 'Jochen Hippel'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 3m29s
+    length: '03:29'
 
-  - path: /content/vgm/u_copier.vgm
+  - id: 41
+    path: /content/vgm/u_copier.vgm
     title: 'UNION DEMO Copier'
     artist: 'Mad Max (composed by M.O.N.)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 7m13s
+    length: '07:13'
 
-  - path: /content/vgm/U_LOADER.vgm
+  - id: 42
+    path: /content/vgm/U_LOADER.vgm
     title: 'Union Demo LOADER'
     artist: 'Mad Max (from Maniacs Of Noise)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 0m38s
+    length: '00:38'
 
-  - path: /content/vgm/u_menu.vgm
+  - id: 43
+    path: /content/vgm/u_menu.vgm
     title: 'Union Demo MENU'
     artist: 'Mad Max (Alloyrun/MON)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 6m47s
+    length: '06:47'
 
-  - path: /content/vgm/u_tcbscr.vgm
+  - id: 44
+    path: /content/vgm/u_tcbscr.vgm
     title: 'TCB Scroller (UNION DEMO)'
     artist: 'Mad Max (Thundercats/Robb Hubbard)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m48s
+    length: '04:48'
 
-  - path: /content/vgm/VE3.vgm
+  - id: 45
+    path: /content/vgm/VE3.vgm
     title: 'Virtual Escape (Equinox) End Tune'
     artist: 'Jochen Hippel (MadMax)'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 4m10s
+    length: '04:10'
 
-  - path: /content/vgm/ym_009.vgm
+  - id: 46
+    path: /content/vgm/ym_009.vgm
     title: 'ym_009.vgm'
     artist: ''
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 2m41s
+    length: '02:41'
 
-  - path: /content/vgm/ym_015.vgm
+  - id: 47
+    path: /content/vgm/ym_015.vgm
     title: 'unknown tune'
     artist: 'Loony / Admirables'
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
-    length: 8m17s
+    length: '08:17'
 

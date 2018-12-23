@@ -466,22 +466,35 @@ if os.path.isdir(source_path):
 	#files.sort()
 	#print files
 
+	id = 0
 	for file in files:
 		print "'" + file + "'"
 
 		vgm_file = source_path + "/" + file
 		vgm_data = VgmParser(vgm_file)
 
-		yaml += "  - path: /" + vgm_file + "\r\n"
+		yaml += "  - id: " + str(id) + "\r\n"
+		yaml += "    path: /" + vgm_file + "\r\n"
 		yaml += "    title: '" + vgm_data.gd3_data['title_eng'].decode("utf_16") + "'\r\n"
 		yaml += "    artist: '" + vgm_data.gd3_data['artist_eng'].decode("utf_16") + "'\r\n"
 		yaml += "    chip: SN76489\r\n"
 		yaml += "    clock: " + str(vgm_data.metadata['sn76489_clock']/1000000) + "Mhz\r\n"
 		yaml += "    rate: " + str(vgm_data.metadata['rate']) + "Hz\r\n"
-		yaml += "    length: " + str(vgm_data.metadata['total_samples']/44100/60) + "m" + str((vgm_data.metadata['total_samples']/44100)%60) + "s\r\n"
+
+		tm = (vgm_data.metadata['total_samples']/44100)/60
+		ts = (vgm_data.metadata['total_samples']/44100)%60
+		yaml += "    length: '" + '{:02d}'.format(tm) + ":" + '{:02d}'.format( ts ) + "'\r\n"
+
+		if False:
+			if min:
+				yaml += "    length: " + str(tm) + "m" + '{:02d}'.format( ts ) + "s\r\n"
+			else:
+				yaml += "    length: " + '{:02d}'.format( ts ) + "s\r\n"
+			
 
 		yaml += "\r\n"
 
+		id += 1
 
 		#print vgm_data.metadata
 		#print vgm_data.gd3_data

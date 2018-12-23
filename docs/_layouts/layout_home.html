@@ -5,6 +5,12 @@
     <title>YM2149</title>
     <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" />    
     <link rel="stylesheet" href="{{ site.baseurl }}/css/bulma.css" type="text/css">
+
+    <style>
+      body {
+          padding-top: 50px;
+      }
+    </style>
     <script type="text/javascript" src="{{ site.baseurl }}/js/jquery1.11.min.js"></script>
     <script type="text/javascript" src="{{ site.baseurl }}/js/jquery.details.min.js"></script>
     <script type="text/javascript" src="{{ site.baseurl }}/js/scriptprocessor_player.min.js"></script>
@@ -180,99 +186,109 @@
       </nav>
 
 
-      <section class="main-content columns is-fullheight">
+      <section class="section">
 
+          <div class="container">
 
-        <aside class="column is-2 is-narrow-mobile is-fullheight section is-hidden-mobile">
+            <div class="columns">
 
-          <section class="section">
-            <div class="card">
-                <div class="card-content">
-                    <div id="drop" class="drop"><img src="{{ site.baseurl }}/img/chip.png" width=270 height=270/><p>Drop VGMs here to listen</p></div><!--see BasicPlayerControls-->            
+              <div class="column is-full">
+                <div class="card">
+                  <div class="card-content">
+                    <nav class="breadcrumb" aria-label="breadcrumbs">
+                      <ul>
+                        <li><a href="#">Home</a></li>
+                        <li><a href="#">VGM</a></li>
+                        <li class="is-active"><a href="#" aria-current="page">Demo Tunes</a></li>
+                      </ul>
+                    </nav>
+                  </div>
                 </div>
+              </div>
+              <!-- columns -->
             </div>
-          </section>
-          <section class="section ">
-              <div class="card">
-
-                <div class="card-content">
+        
+            <div class="columns">
+              <div class="column is-full">
 
 
+                  <div class="card">
+
+                  <table class="table is-striped is-hoverable is-fullwidth">
+                    <thead>
+                      <tr>
+                        <th>Control</th>
+                        <th>Length</th>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>Tags</th>
+                        <th>File</th>
+
+                      </tr>
+                    </thead>
+                    <tbody>
 
 
-                </div>              
+                      {% for vgm in site.data.content.content %}
+                        <tr id="{{ site.baseurl }}{{ vgm.path }}">
+                          <td>  <button class="button is-info is-rounded " onclick="playerControls.playSong('{{ site.baseurl }}{{ vgm.path }}')"><strong class="fa fa-play"></strong></a></button>    </td>  
+                          <td>{{ vgm.length }}</td>
+                          <td>{{ vgm.title }}</td>
+                          <td>{{ vgm.artist }}</td>
+                          <td>
+                    <div class="tags are-medium">
+                      <span class="tag is-rounded is-dark">{{ vgm.chip }}</span>
+                      <span class="tag is-rounded is-dark">{{ vgm.clock }}</span>
+                      <span class="tag is-rounded is-dark">{{ vgm.rate }}</span>
+                    </div></td>
+                        <td>
+                        
+                          <p class="control">
+                            <a class="button is-info" href="{{ site.baseurl }}{{ vgm.path }}">
+                              <strong class="fa fa-download"></strong>
+                            </a>
+                          </p>
+                        </td>
+                      </tr>
 
-                <div class="card-image">
-                      <div id="logo">
-                              <!-- in new Chrome the SHIT reflections disapear dependig on the canvas height.. what a fucking joke -->
-                              <div id="moz-reflect-logo"><canvas  id="logoCanvas"  width="220" height="100"></canvas></div>	
-                      </div>
-                      
+                    {% endfor %}    
+                    </tbody>
+                  </table>
+
 
                   </div>
 
-
-              </div>
-          </section>          
-        </aside>
-
-
-
-
-        <section class="section">
-          <div class="container ">
-
-
-              <div class="card">
-                <div class="card-content">
-              <table class="table is-striped is-hoverable is-fullwidth">
-                <thead>
-                  <tr>
-                    <th>Control</th>
-                    <th>Length</th>
-                    <th>Title</th>
-                    <th>Author</th>
-                    <th>Tags</th>
-                    <th>File</th>
-
-                  </tr>
-                </thead>
-                <tbody>
-
-
-                  {% for vgm in site.data.content.content %}
-                    <tr id="{{ site.baseurl }}{{ vgm.path }}">
-                      <td>  <button class="button is-info is-rounded " onclick="playerControls.playSong('{{ site.baseurl }}{{ vgm.path }}')"><strong class="fa fa-play"></strong></a></button>    </td>  
-                      <td>{{ vgm.length }}</td>
-                      <td>{{ vgm.title }}</td>
-                      <td>{{ vgm.artist }}</td>
-                      <td>
-                <div class="tags are-medium">
-                  <span class="tag is-rounded is-dark">{{ vgm.chip }}</span>
-                  <span class="tag is-rounded is-dark">{{ vgm.clock }}</span>
-                  <span class="tag is-rounded is-dark">{{ vgm.rate }}</span>
-                </div></td>
-                    <td>
-                    
-                      <p class="control">
-                        <a class="button is-info" href="{{ site.baseurl }}{{ vgm.path }}">
-                          <strong class="fa fa-download"></strong>
-                        </a>
-                      </p>
-                    </td>
-                  </tr>
-
-                {% endfor %}    
-                </tbody>
-              </table>
+                  <!-- container -->
+              </div> 
+              <!-- columns -->
             </div>
 
-              </div>
+            <div class="columns">            
+              <div class="column is-full">
+                <div class="card">
+                  <div class="card-content">
 
-              <!-- container -->
-          </div> 
-        </section>
 
+
+                    <div class="card-content">
+                      <div id="drop" class="drop"><img src="{{ site.baseurl }}/img/chip.png" width=270 height=270/><p>Or drop VGMs onto the Chip to listen!</p></div><!--see BasicPlayerControls-->            
+                    </div>
+
+                    <div id="logo">
+                        <!-- in new Chrome the SHIT reflections disapear dependig on the canvas height.. what a fucking joke -->
+                        <div id="moz-reflect-logo"><canvas  id="logoCanvas"  width="220" height="100"></canvas></div>	
+                    </div>
+
+                  </div>
+                </div>
+              </div>              
+
+          <!-- columns -->
+            </div>
+
+
+          <!-- container -->
+          </div>
 
 
       </section>
