@@ -6,6 +6,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_150MPH_vgm
     length: '05:07'
 
   - id: 1
@@ -15,6 +16,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_ace2_vgm
     length: '05:52'
 
   - id: 2
@@ -24,6 +26,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_androids_vgm
     length: '02:56'
 
   - id: 3
@@ -33,6 +36,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_ark_vgm
     length: '03:58'
 
   - id: 4
@@ -42,6 +46,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_axelf_vgm
     length: '02:47'
 
   - id: 5
@@ -51,6 +56,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_beatnick_vgm
     length: '06:13'
 
   - id: 6
@@ -60,6 +66,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_bestpart_vgm
     length: '03:12'
 
   - id: 7
@@ -69,6 +76,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_CPCTL10A_vgm
     length: '04:54'
 
   - id: 8
@@ -78,6 +86,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_cybernoid2_vgm
     length: '05:45'
 
   - id: 9
@@ -87,6 +96,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_darkside1_vgm
     length: '02:02'
 
   - id: 10
@@ -96,6 +106,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_icepalace_vgm
     length: '04:53'
 
   - id: 11
@@ -105,6 +116,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_labello_vgm
     length: '04:50'
 
   - id: 12
@@ -114,6 +126,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_led1_vgm
     length: '02:42'
 
   - id: 13
@@ -123,6 +136,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_led6_vgm
     length: '01:53'
 
   - id: 14
@@ -132,6 +146,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_LETHAL7_vgm
     length: '02:23'
 
   - id: 15
@@ -141,6 +156,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_MAIN_vgm
     length: '03:04'
 
   - id: 16
@@ -150,6 +166,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_MMLAB_vgm
     length: '06:12'
 
   - id: 17
@@ -159,6 +176,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_mongolia_vgm
     length: '03:33'
 
   - id: 18
@@ -168,6 +186,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_music1_vgm
     length: '05:43'
 
   - id: 19
@@ -177,6 +196,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_music2_vgm
     length: '05:01'
 
   - id: 20
@@ -186,6 +206,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_nd_ui_vgm
     length: '00:38'
 
   - id: 21
@@ -195,6 +216,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_ODYSSEY_vgm
     length: '05:30'
 
   - id: 22
@@ -204,6 +226,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_prehis12_vgm
     length: '02:48'
 
   - id: 23
@@ -213,6 +236,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_prehis15_vgm
     length: '06:19'
 
   - id: 24
@@ -222,6 +246,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_SANXION_vgm
     length: '05:45'
 
   - id: 25
@@ -231,6 +256,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_sanxionv2_vgm
     length: '05:40'
 
   - id: 26
@@ -240,6 +266,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_sanxion_a_vgm
     length: '02:59'
 
   - id: 27
@@ -249,6 +276,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_song_008_vgm
     length: '04:16'
 
   - id: 28
@@ -258,6 +286,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_song_020_vgm
     length: '02:18'
 
   - id: 29
@@ -267,6 +296,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_SONG_085_vgm
     length: '02:21'
 
   - id: 30
@@ -276,6 +306,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_SONG_091_vgm
     length: '00:46'
 
   - id: 31
@@ -285,6 +316,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_SONG_194_vgm
     length: '02:18'
 
   - id: 32
@@ -294,6 +326,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_song_196_vgm
     length: '03:29'
 
   - id: 33
@@ -303,6 +336,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_song_318_vgm
     length: '01:28'
 
   - id: 34
@@ -312,6 +346,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_song_350_vgm
     length: '03:03'
 
   - id: 35
@@ -321,6 +356,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_SYNER5_vgm
     length: '03:42'
 
   - id: 36
@@ -330,6 +366,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_SYNERG2_vgm
     length: '14:22'
 
   - id: 37
@@ -339,6 +376,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_tale7_vgm
     length: '02:36'
 
   - id: 38
@@ -348,6 +386,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_TCAT_vgm
     length: '04:12'
 
   - id: 39
@@ -357,6 +396,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_The_Addicts_Anthem_vgm
     length: '04:15'
 
   - id: 40
@@ -366,6 +406,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_THINGS_vgm
     length: '03:29'
 
   - id: 41
@@ -375,6 +416,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_u_copier_vgm
     length: '07:13'
 
   - id: 42
@@ -384,6 +426,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_U_LOADER_vgm
     length: '00:38'
 
   - id: 43
@@ -393,6 +436,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_u_menu_vgm
     length: '06:47'
 
   - id: 44
@@ -402,6 +446,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_u_tcbscr_vgm
     length: '04:48'
 
   - id: 45
@@ -411,6 +456,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_VE3_vgm
     length: '04:10'
 
   - id: 46
@@ -420,6 +466,7 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_ym_009_vgm
     length: '02:41'
 
   - id: 47
@@ -429,5 +476,6 @@ content:
     chip: SN76489
     clock: 4Mhz
     rate: 50Hz
+    db_id: content_vgm_ym_015_vgm
     length: '08:17'
 

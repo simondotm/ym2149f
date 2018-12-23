@@ -2,6 +2,7 @@ import gzip
 import struct
 import sys
 import os
+import re
 from os import listdir
 from os.path import isfile, join
 from os.path import basename
@@ -473,6 +474,18 @@ if os.path.isdir(source_path):
 		vgm_file = source_path + "/" + file
 		vgm_data = VgmParser(vgm_file)
 
+		# create a unique db id for this vgm file based on its path name
+		# remove any non-standard characters
+		#db_id = vgm_file
+		#db_id = db_id.replace("/", "_")
+		#db_id = db_id.replace(".", "_")
+		#db_id = db_id.replace(" ", "_")
+		#db_id = db_id.replace("\\", "_")
+		#db_id = db_id.replace("-", "_")
+		#db_id = re.sub(r'\W+', '', db_id)
+
+		db_id = re.sub('[^0-9a-zA-Z]+', '_', vgm_file)
+
 		yaml += "  - id: " + str(id) + "\r\n"
 		yaml += "    path: /" + vgm_file + "\r\n"
 		yaml += "    title: '" + vgm_data.gd3_data['title_eng'].decode("utf_16") + "'\r\n"
@@ -480,6 +493,7 @@ if os.path.isdir(source_path):
 		yaml += "    chip: SN76489\r\n"
 		yaml += "    clock: " + str(vgm_data.metadata['sn76489_clock']/1000000) + "Mhz\r\n"
 		yaml += "    rate: " + str(vgm_data.metadata['rate']) + "Hz\r\n"
+		yaml += "    db_id: " + db_id + "\r\n"
 
 		tm = (vgm_data.metadata['total_samples']/44100)/60
 		ts = (vgm_data.metadata['total_samples']/44100)%60

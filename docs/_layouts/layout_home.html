@@ -20,6 +20,45 @@
     <script type="text/javascript" src="{{ site.baseurl }}/js/mini_controls.js"></script>
 
     <script type="text/javascript" src="{{ site.baseurl }}/js/backend_vgm.js"></script>    
+
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase.js"></script>
+    <!-- Firebase App is always required and must be first -->
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase-app.js"></script>    
+    <!-- Add additional services that you want to use -->
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase-messaging.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.7.0/firebase-functions.js"></script>
+    <script>
+      // Initialize Firebase
+      // TODO: Replace with your project's customized code snippet
+      var config = {
+        apiKey: "AIzaSyAM69N-rFgZcJOeT-91GUugmcovL3tLpVc",
+        authDomain: "ym2149-39dcc.firebaseapp.com",
+        databaseURL: "https://ym2149-39dcc.firebaseio.com",
+        projectId: "ym2149-39dcc",
+        storageBucket: "ym2149-39dcc.appspot.com",
+        messagingSenderId: "694120657177"
+      };
+      firebase.initializeApp(config);
+
+      firebase.auth().onAuthStateChanged(function(user) {
+        if (user) {
+          // User is signed in.
+          var isAnonymous = user.isAnonymous;
+          var uid = user.uid;
+          // ...
+          //alert("user signed in, isAnonymous=" + isAnonymous + " uid=" + uid);
+        } else {
+          // User is signed out.
+          // ...
+          alert("user signed out");
+        }
+        // ...
+      });      
+    </script>
+
     <script>
         var playerControls;
         var	songDisplay;
@@ -83,6 +122,11 @@
                                         [yellow, red, purple, blue, blue], 1, 0.1, (function(){playerControls.animate()}));
         
             playerControls.playNextSong();
+
+
+            dbInitCounts();
+
+
         }
 
         var selectedSong = null;
@@ -98,7 +142,105 @@
           item.setAttribute("class", "is-selected");	
           selectedSong = songName;	   
           
+
+          dbAddPlay(songName);
+
           
+        }
+
+        function dbSongId(songName)
+        {
+          return songName.replace(/\W+/g, "_");
+        }
+
+
+        function dbAddPlay(songName)
+        {          
+          var database = firebase.database();
+          const counterRef = database.ref("/content/" + dbSongId(songName) + "/playCount").transaction(current => { return (current || 0) + 1; });
+        }
+
+        function dbUpdatePlayCount()
+        {
+
+        }
+
+        function dbGetPlays(songName)
+        {
+          var dbId = dbSongId(songName)
+          var countRef = firebase.database().ref("/content/" + dbId + "/playCount");
+          countRef.on('value', function(snapshot) {
+            dbUpdatePlayCount(songName, snapshot.val());
+          });
+        }
+
+        function dbInitCounts()
+        {
+          for (var i = 0; i < songs.length; i++) {
+            var songName = songs[i];
+
+            var dbId = dbSongId(songName)
+
+            // playcounts
+            var dbRef = firebase.database().ref("/content/" + dbId + "/playCount");
+            //dbRef.on('value', snap => playCount.innerText = snap.val());
+            dbRef.on('value', function(snapshot) {
+
+              // Now simply find the parent and return the name.
+              var parname = snapshot.ref.parent.key;
+              var playCount = document.getElementById(parname+"_pc");
+              if (playCount != null)
+                playCount.innerHTML = snapshot.val();              
+            });            
+
+            // likes
+            var dbRef = firebase.database().ref("/content/" + dbId + "/likeCount");
+            //dbRef.on('value', snap => playCount.innerText = snap.val());
+            dbRef.on('value', function(snapshot) {
+
+              // Now simply find the parent and return the name.
+              var parname = snapshot.ref.parent.key;
+              var count = document.getElementById(parname+"_lc");
+              if (count != null)
+              {
+                if (snapshot.val() == undefined) {
+                  count.innerHTML = 0;    
+                }else{
+                  count.innerHTML = snapshot.val();    
+                }
+              }
+          
+            });               
+
+
+
+            //Do something
+          }
+
+        }
+
+
+        function dbLike(songName, uid)
+        {
+          if (firebase.auth().currentUser !== null) {
+            db_id = dbSongId(songName);
+            var database = firebase.database();
+            database.ref("/content/" + db_id + "/likeCount").transaction(current => { return (current || 0) + 1; });
+            var uid = firebase.auth().currentUser.uid;
+            database.ref("/users/" + uid + "/likeCount").transaction(current => { return (current || 0) + 1; });
+
+          }
+        }
+
+        function myLogin()
+        {
+          firebase.auth().signInAnonymously().catch(function(error) {
+            // Handle Errors here.
+            var errorCode = error.code;
+            var errorMessage = error.message;
+            alert(errorMessage);
+            // ...
+          });          
         }
         </script>    
 </head>
@@ -165,18 +307,18 @@
 
 
 
-            <!--
+            
             <div class="navbar-item">
               <div class="buttons">
                 <a class="button is-primary">
                   <strong>Sign up</strong>
                 </a>
-                <a class="button is-light">
+                <a class="button is-light" onclick="myLogin()">
                   Log in
                 </a>
               </div>
             </div>
-          -->
+        
           </div>
 
         </div>
@@ -249,7 +391,7 @@
                         <th>Likes</th>
                         <th>Tags</th>
                         <th>File</th>
-
+                        <th>Plays</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -267,7 +409,7 @@
                                   <span class="icon is-small">
                                     <i class="fa fa-heart"></i>
                                   </span>
-                                  <span><strong>123</strong></span>
+                                  <span><strong><div id="_ym2149f_{{ vgm.db_id }}_lc">0</div></strong></span>
                                 </a>                         
                           </td>
                           <td>
@@ -284,6 +426,7 @@
                             </a>
                           </p>
                         </td>
+                        <td><div id="_ym2149f_{{ vgm.db_id }}_pc"></div></td>
                       </tr>
 
                     {% endfor %}    
