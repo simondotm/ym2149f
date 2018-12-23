@@ -26,10 +26,8 @@
         
         var songs = [
             // add your music files here, e.g.:
-            {% for image in site.static_files %}
-                {% if image.path contains 'content/vgm' %}
-                    '{{ site.baseurl }}{{ image.path }}',
-                {% endif %}
+            {% for vgm in site.data.content.content %}
+              '{{ site.baseurl }}{{ vgm.path }}',            
             {% endfor %}
         ];
         
@@ -98,7 +96,9 @@
 
           var item = document.getElementById(songName);
           item.setAttribute("class", "is-selected");	
-          selectedSong = songName;	          
+          selectedSong = songName;	   
+          
+          
         }
         </script>    
 </head>
