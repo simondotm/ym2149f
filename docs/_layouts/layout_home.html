@@ -158,7 +158,6 @@
         // Firebase keys cannot contain ., $, #, [, ], /
         function dbSongId(songName)
         {
-          //return songName.replace(/\W+/g, "_");
           var db_id = songName;
           db_id = db_id.replace(/\./g, "%2E");
           db_id = db_id.replace(/\$/g, "%23");
@@ -213,13 +212,12 @@
 
             // likes
             var dbRef = firebase.database().ref(dbId + "/likeCount");
-            //dbRef.on('value', snap => playCount.innerText = snap.val());
             dbRef.on('value', function(snapshot) {
 
               // Now simply find the parent and return the name.
               //var parname = snapshot.ref.parent.key;
               var ref = snapshot.ref.path.toString();
-              var count = document.getElementById(ref);//+"/likeCount");
+              var count = document.getElementById(ref);
               if (count != null)
               {
                 if (snapshot.val() == undefined) {
@@ -266,20 +264,7 @@
 
         }
 
-/*
-        function dbLike(songName)
-        {
-          if (firebase.auth().currentUser !== null) {
-            db_id = dbSongId(songName);
-            var database = firebase.database();
-            database.ref(db_id + "/likeCount").transaction(current => { return (current || 0) + 1; });
-            var uid = firebase.auth().currentUser.uid;
-            var o = '{ "' + db_id + '": true }';
-            database.ref("/users/" + uid + "/likes").update(JSON.parse(o));
 
-          }
-        }
-      */
 
         function dbLike(songName)
         {
@@ -302,12 +287,8 @@
                   ref.likes[uid] = true;
                 }
 
-
-//                ref.likes[uid] = true;
-
-  //              var o = '{ "' + db_id + '": true }';
-  //              database.ref("/users/" + uid + "/likes").update(JSON.parse(o));
-  //              current => { return (current || 0) + 1; 
+                var o = '{ "' + db_id + '":' + ref.likes[uid] + '}';
+                firebase.database().ref("/users/" + uid + "/likes").update(JSON.parse(o));
                 return ref;
               }else{
                 return {};
