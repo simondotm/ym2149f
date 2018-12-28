@@ -474,20 +474,28 @@ if os.path.isdir(source_path):
 		vgm_file = source_path + "/" + file
 		vgm_data = VgmParser(vgm_file)
 
+		# Firebase keys cannot contain ., $, #, [, ], /
 		# create a unique db id for this vgm file based on its path name
 		# remove any non-standard characters
-		#db_id = vgm_file
+
+		db_id = "/" + vgm_file
 		#db_id = db_id.replace("/", "_")
 		#db_id = db_id.replace(".", "_")
 		#db_id = db_id.replace(" ", "_")
 		#db_id = db_id.replace("\\", "_")
 		#db_id = db_id.replace("-", "_")
 		#db_id = re.sub(r'\W+', '', db_id)
+		db_id = db_id.replace(".", "%2E")
+		db_id = db_id.replace("$", "%23")
+		db_id = db_id.replace("#", "%24")
+		db_id = db_id.replace("[", "%5B")
+		db_id = db_id.replace("]", "%5D")
+		
 
-		db_id = re.sub('[^0-9a-zA-Z]+', '_', vgm_file)
+		#db_id = re.sub('[^0-9a-zA-Z]+', '_', vgm_file)
 
 		yaml += "  - id: " + str(id) + "\r\n"
-		yaml += "    path: /" + vgm_file + "\r\n"
+		yaml += "    url: /" + vgm_file + "\r\n"
 		yaml += "    title: '" + vgm_data.gd3_data['title_eng'].decode("utf_16") + "'\r\n"
 		yaml += "    artist: '" + vgm_data.gd3_data['artist_eng'].decode("utf_16") + "'\r\n"
 		yaml += "    chip: SN76489\r\n"
