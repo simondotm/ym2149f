@@ -1087,6 +1087,11 @@ class YmReader(object):
         #--------------------------------------------------------------
         def output_sn_noise(tone):
 
+            # We would not expect to see tones other than 3 (tuned periodic noise) or 4,5,6 (fixed frequency white noise)
+            # so flag if so.
+            if (tone != 4) and (tone != 3) and (tone != 5) and (tone != 6):
+                print "WARNING: Detected unusual noise note - " + str(tone)
+
             r_lo = 128 + (3 << 5) + (tone & 15)
 
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
@@ -1169,6 +1174,11 @@ class YmReader(object):
         print "    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel"
         print "---"
 
+
+        # Initialise these outside of the main loop so that their state persists across frame
+        # otherwise we can end up with data being incorrectly reset - particularly on the noise channel
+        sn_attn_out = [0, 0, 0, 0]
+        sn_tone_out = [0, 0, 0, 0]
 
         #--------------------------------------------------------------
         # YM stream processing code
@@ -1472,8 +1482,7 @@ class YmReader(object):
             # output VGM SN76489 equivalent data
             #------------------------------------------------
 
-            sn_attn_out = [0, 0, 0, 0]
-            sn_tone_out = [0, 0, 0, 0]
+
 
             # load the current tones & volumes
             sn_attn_out[0] = ym_volume_a >> 1
@@ -1714,6 +1723,11 @@ class YmReader(object):
             else:
                 if bass_active:
                     sn_tone_out[3] = 3 # Periodic noise
+
+            # sanity check. was previously a bug.
+            if sn_tone_out[3] == 0:
+                print "WARNING: Noise tone 0 - should not happen!"
+
 
             #--------------------------------------------------
             # Process volumes
