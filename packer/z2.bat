@@ -1,1 +1,0 @@
-exomizer.exe raw -c -m 2048 "mongolia.raw" -o "z2.bin.exo" 
