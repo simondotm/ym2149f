@@ -621,7 +621,7 @@ class YmReader(object):
             self.__check_eof()        
 
     def __parse_extra_infos(self):
-        if self.__header['id'] == 'YM2!' or self.__header['id'] == 'YM3!':
+        if self.__header['id'] == 'YM2!' or self.__header['id'] == 'YM3!' or  self.__header['id'] == 'YM3b':
             self.__header['song_name'] = self.__filename
             self.__header['author_name'] = ''
             self.__header['song_comment'] = ''
@@ -647,7 +647,7 @@ class YmReader(object):
         # we support YM2, YM3, YM5 and YM6
         
         d = {}
-        if ym_format == 'YM2!' or ym_format == 'YM3!':
+        if ym_format == 'YM2!' or ym_format == 'YM3!' or ym_format == 'YM3b':
             print "Version 2"
             d['id'] = ym_format
             d['check_string'] = 'LeOnArD!'
