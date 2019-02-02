@@ -739,11 +739,9 @@ class YmReader(object):
         #print "file offset=" + str(self.__fd.tell())  
        
         cnt  = self.__header['nb_frames']
-        #regs = [self.__fd.read(cnt) for i in xrange(16)]
         regs = []
         for i in xrange( self.__header['nb_registers']):
-            #print "file offset=" + str(self.__fd.tell())  
-            regs.append(self.__fd.read(cnt))
+            regs.append(self.__fd.read(cnt))            
 
         if ENABLE_DEBUG:
             print " Loaded " + str(len(regs)) + " register data chunks"
@@ -838,19 +836,20 @@ class YmReader(object):
         #print get_register_data(1,0)
 
         # set default volumes at the start of the tune for all channels
-        dv = 15 # default volume is 15 (silent)
-        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(0<<5)+16+dv) ) # LATCH VOLUME C0
-        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(1<<5)+16+dv) ) # LATCH VOLUME C1
-        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(2<<5)+16+dv) ) # LATCH VOLUME C2
-        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128+(3<<5)+16+dv) ) # LATCH VOLUME C3 to SILENT
+        if True:
+            dv = 15 # default volume is 15 (silent)
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', 128+(0<<5)+16+dv) ) # LATCH VOLUME C0
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', 128+(1<<5)+16+dv) ) # LATCH VOLUME C1
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', 128+(2<<5)+16+dv) ) # LATCH VOLUME C2
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', 128+(3<<5)+16+dv) ) # LATCH VOLUME C3 to SILENT
 
-        # set periodic noise on channel 3
-        vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
-        vgm_stream.extend( struct.pack('B', 128 + (3 << 5) + 3) ) # LATCH PERIODIC TONE on channel 3    
+            # set periodic noise on channel 3
+            vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
+            vgm_stream.extend( struct.pack('B', 128 + (3 << 5) + 3) ) # LATCH PERIODIC TONE on channel 3    
 
         # stats for tracking frequency ranges within music
         ym_tone_a_max = 0
@@ -876,8 +875,10 @@ class YmReader(object):
         # number of frames using envelopes
         ym_env_count = 0 
 
-        sn_attn_latch = [ 0, 0, 0, 0 ]
-        sn_tone_latch = [ 0, 0, 0, 0 ]
+        # latch data for optimizing the output vgm to only output changes in register state
+        # make sure the initial values are guaranteed to get an output on first run
+        sn_attn_latch = [ -1, -1, -1, -1 ]
+        sn_tone_latch = [ -1, -1, -1, -1 ]
 
 
 
@@ -921,7 +922,13 @@ class YmReader(object):
                         
 
         def get_register_byte(r):
-            return int(binascii.hexlify(regs[r][i]), 16)
+            # some tunes have incorrect data stream lengths, handle that here.
+            if r < len(regs) and i < self.__header['nb_frames'] and i < len(regs[r]) :
+                n = regs[r][i]
+                return int(binascii.hexlify(n), 16)
+            else:
+                print("ERROR: Register out of range - bad sample ID or corrupt file?")
+                return 0
 
         def get_register_word(r):
             return get_register_byte(r) + get_register_byte(r+1)*256
@@ -1957,9 +1964,12 @@ class YmReader(object):
                     if (ENABLE_ENVELOPES):
                         # update the envelope cpu emulation
                         self.__ymenv.tick( self.__header['chip_clock'] / (50*sample_rate) )
-                    vgm_stream.extend( struct.pack('B', 0x61) ) 
-                    vgm_stream.extend( struct.pack('B', sample_interval % 256) ) 
-                    vgm_stream.extend( struct.pack('B', sample_interval / 256) )                         
+                    if sample_interval == 882:
+                        vgm_stream.extend( struct.pack('B', 0x63) ) 
+                    else:
+                        vgm_stream.extend( struct.pack('B', 0x61) ) 
+                        vgm_stream.extend( struct.pack('B', sample_interval % 256) ) 
+                        vgm_stream.extend( struct.pack('B', sample_interval / 256) )                         
 
                 else:
                     if False and ENABLE_ENVELOPES:
@@ -1997,6 +2007,7 @@ class YmReader(object):
         # Output the VGM
         #--------------------------------------------
 
+        vgm_stream.extend( struct.pack('B', 0x66) ) # VGM END command
         vgm_stream_length = len(vgm_stream)		
 
         # build the GD3 data block
