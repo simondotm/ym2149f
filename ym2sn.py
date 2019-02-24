@@ -26,7 +26,7 @@ ENABLE_ATTENUATION = False   # enables conversion of YM to SN attenuation. In th
 ENABLE_ENVELOPE_MIX_HACK = True # wierd oddity fix where tone mix is disabled, but envelopes are enabled - EXPERIMENTAL
 
 OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
-SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 126=6300Hz (GOOD!) 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
+SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 63=700Hz, 126=6300Hz (GOOD!) 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
 
 
 # legacy/non working debug flags
@@ -38,8 +38,8 @@ FILTER_CHANNEL_B = False
 FILTER_CHANNEL_C = False
 FILTER_CHANNEL_N = False    # Noise channel
 
-ENABLE_DEBUG = True        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
-ENABLE_VERBOSE = True
+ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
+ENABLE_VERBOSE = False
 
 ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN data file)
 
