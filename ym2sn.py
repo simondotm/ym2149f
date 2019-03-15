@@ -1,8 +1,28 @@
 #!/usr/bin/env python
+# ym2sn.py
 # .YM files (YM2149 sound chip) to SN76489 .VGM music file format conversion utility
 # was originated based on code from https://github.com/FlorentFlament/ym2149-streamer
 # Almost completely rewritten by https://github.com/simondotm/
-
+#
+# Copyright (c) 2019 Simon Morris. All rights reserved.
+#
+# "MIT License":
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the Software
+# is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import functools
 import itertools
@@ -21,7 +41,7 @@ ENABLE_NOISE = True         # enables noises to be processed
 ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
 ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
 ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
-ENABLE_ATTENUATION = False   # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
+ENABLE_ATTENUATION = False  # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
 
 ENABLE_ENVELOPE_MIX_HACK = True # wierd oddity fix where tone mix is disabled, but envelopes are enabled - EXPERIMENTAL
 
@@ -972,7 +992,8 @@ class YmReader(object):
             # If the tone is 0, it's probably because
             # there's a digidrum being played on this voice
             if ym_tone == 0:
-                print " ERROR: ym tone is 0"
+                if ENABLE_VERBOSE:
+                    print " ERROR: ym tone is 0"
                 ym_freq = 0
                 target_freq = 0
             else:
@@ -1017,7 +1038,8 @@ class YmReader(object):
 
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
-                print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
+                if ENABLE_VERBOSE:
+                    print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
 
             return sn_tone
 
@@ -1036,7 +1058,8 @@ class YmReader(object):
             # If the tone is 0, it's probably because
             # there's a digidrum being played on this voice
             if ym_tone == 0:
-                print " ERROR: ym tone is 0"
+                if ENABLE_VERBOSE:
+                    print " ERROR: ym tone is 0"
                 ym_freq = 0
             else:
                 ym_freq = (float(clock) / 16.0) / float(ym_tone)
@@ -1045,7 +1068,8 @@ class YmReader(object):
             # of the SN capabilities, add an octave
             while ym_freq < sn_pfreq_lo:
                 ym_freq *= 2.0
-                print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
+                if ENABLE_VERBOSE:
+                    print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
 
             sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * float(LFSR_BIT) )
             
@@ -1065,7 +1089,8 @@ class YmReader(object):
 
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
-                print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
+                if ENABLE_VERBOSE:
+                    print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
 
             return sn_tone
 
@@ -1458,7 +1483,8 @@ class YmReader(object):
                 s += " ]"
 
             # output YM frame data before we mess with it.
-            print s  
+            if ENABLE_VERBOSE:
+                print s  
 
             #---------------------------------------------------
             # Stats
@@ -2121,15 +2147,53 @@ def to_minsec(frames, frames_rate):
     secs = secs % 60
     return (mins, secs)
 
-def main():
+#------------------------------------------------------------------------
+# Main()
+#------------------------------------------------------------------------
+
+import argparse
+
+# Determine if running as a script
+if __name__ == '__main__':
+
+    print("ym2sn.py : Convert Atari ST .YM files to SN76489 VGM music files")
+    print("Written in 2019 by Simon Morris, https://github.com/simondotm/ym2149f")
+    print("")
+
+    epilog_string = "Notes:\n"
+    epilog_string += " This tool does not support LHA compressed YM files, so\n"
+    epilog_string += "  you must extract the archived YM file first.\n"
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog_string)
+
+    parser.add_argument("input", help="YM source file (must be extracted from within the original YM file) [input]")
+    parser.add_argument("-o", "--output", metavar="<output>", help="write VGM file <output> (default is '[input].vgm')")
+    #parser.add_argument("-b", "--buffer", type=int, default=255, metavar="<n>", help="Set decoder buffer size to <n> bytes, default: 255")
+    #parser.add_argument("-n", "--huffman", help="Enable huffman compression", default=False, action="store_true")
+    parser.add_argument("-v", "--verbose", help="Enable verbose mode", action="store_true")
+    args = parser.parse_args()
+
+
+    src = args.input
+    dst = args.output
+    if dst == None:
+        dst = os.path.splitext(src)[0] + ".vgm"
+
+    # check for missing files
+    if not os.path.isfile(src):
+        print("ERROR: File '" + src + "' not found")
+        sys.exit()
+
+    # Set options
+    ENABLE_VERBOSE = args.verbose
+
     header = None
     data = None
 
-    if len(sys.argv) != 2:
-        print "Syntax is: {} <ym_filepath>".format(sys.argv[0])
-        exit(0)
 
-    ym_filename = sys.argv[1]
+    ym_filename = src
     with open(ym_filename, "rb") as fd:
         ym = YmReader(fd)
         fd.close()  
@@ -2170,6 +2234,3 @@ def main():
             # Clear YM2149 registers
             fd.write('\x00'*16)
             fd.flush()
-
-if __name__ == '__main__':
-    main()
