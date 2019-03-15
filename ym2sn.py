@@ -1348,7 +1348,8 @@ class YmReader(object):
                 # the TIMER to first position (you must be VERY sound-chip specialist to hear the difference).
 
                 if ts_on:
-                    print " ERROR: Timer Synth Trigger - Not handled yet"
+                    if ENABLE_DEBUG:
+                        print " ERROR: Timer Synth Trigger - Not handled yet"
 
 
                 # timer/sample rate encodings
@@ -2174,9 +2175,15 @@ if __name__ == '__main__':
 
     parser.add_argument("input", help="YM source file (must be extracted from within the original YM file) [input]")
     parser.add_argument("-o", "--output", metavar="<output>", help="write VGM file <output> (default is '[input].vgm')")
-    #parser.add_argument("-b", "--buffer", type=int, default=255, metavar="<n>", help="Set decoder buffer size to <n> bytes, default: 255")
-    #parser.add_argument("-n", "--huffman", help="Enable huffman compression", default=False, action="store_true")
+    parser.add_argument("-c", "--clock", type=float, default=4.0, metavar="<n>", help="Set target SN76489 clock rate to <n> Mhz, default: 4.0 (4Mhz)")
+    parser.add_argument("-s", "--shift", type=int, default=15, metavar="<n>", help="Set target SN76489 LFSR bit to <n> 15 or 16, default: 15 (BBC Micro)")
+    parser.add_argument("-m", "--samplerate", type=int, default=50, metavar="<n>", help="Set envelope sample rate to <n> Hz (must be divisble by 50!), default: 50Hz")
+    parser.add_argument("-f", "--filter", default='', metavar="<s>", help="Filter channels A,B,C,N <s> is a string, eg. -f AB")
+    parser.add_argument("-a", "--attenuation", help="Force SN76489 attentuation mapping (volumes scaled from YM dB to SN dB) [Experimental]", default=False, action="store_true")
+    parser.add_argument("-n", "--noenvelopes", help="Disable envelope simulation", default=False, action="store_true")
+    #parser.add_argument("-l", "--loops", help="Export two VGM files, one for intro and one for looping section", default=False, action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable verbose mode", action="store_true")
+    parser.add_argument("-d", "--debug", help="Enable debug mode", action="store_true")
     args = parser.parse_args()
 
 
@@ -2192,6 +2199,27 @@ if __name__ == '__main__':
 
     # Set options
     ENABLE_VERBOSE = args.verbose
+    ENABLE_DEBUG = args.debug
+    SN_CLOCK = int(args.clock * 1000000.0)
+    LFSR_BIT = args.shift
+    ENABLE_ATTENUATION = args.attenuation
+
+    if (args.noenvelopes):
+        ENABLE_ENVELOPES = False
+        SIM_ENVELOPES = False
+
+    if (args.samplerate % 50) != 0:
+        print("ERROR: Envelope sample rate must be divisible by 50Hz.")
+        sys.exit()
+
+    SAMPLE_RATE = int(args.samplerate / 50)
+    
+    if (len(args.filter) != 0):
+        FILTER_CHANNEL_A = str.find(args.filter, 'A') != -1
+        FILTER_CHANNEL_B = str.find(args.filter, 'B') != -1
+        FILTER_CHANNEL_C = str.find(args.filter, 'C') != -1
+        FILTER_CHANNEL_N = str.find(args.filter, 'N') != -1
+
 
     header = None
     data = None

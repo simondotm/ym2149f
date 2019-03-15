@@ -18,7 +18,9 @@ This repo contains a script I've created to do the conversion so that you can li
 ym2sn.py : Convert Atari ST .YM files to SN76489 VGM music files
 Written in 2019 by Simon Morris, https://github.com/simondotm/ym2149f
 
-usage: ym2sn.py [-h] [-o <output>] [-v] input
+usage: ym2sn.py [-h] [-o <output>] [-c <n>] [-s <n>] [-m <n>] [-f <s>] [-a]
+                [-n] [-v] [-d]
+                input
 
 positional arguments:
   input                 YM source file (must be extracted from within the
@@ -28,7 +30,21 @@ optional arguments:
   -h, --help            show this help message and exit
   -o <output>, --output <output>
                         write VGM file <output> (default is '[input].vgm')
+  -c <n>, --clock <n>   Set target SN76489 clock rate to <n> Mhz, default: 4.0
+                        (4Mhz)
+  -s <n>, --shift <n>   Set target SN76489 LFSR bit to <n> 15 or 16, default:
+                        15 (BBC Micro)
+  -m <n>, --samplerate <n>
+                        Set envelope sample rate to <n> Hz (must be divisble
+                        by 50!), default: 50Hz
+  -f <s>, --filter <s>  Filter channels A,B,C,N <s> is a string, eg. -f AB
+  -a, --attenuation     Force SN76489 attentuation mapping (volumes scaled
+                        from YM dB to SN dB) [Experimental]
+  -n, --noenvelopes     Disable envelope simulation
   -v, --verbose         Enable verbose mode
+  -d, --debug           Enable debug mode
+
+
 
 ```
 
