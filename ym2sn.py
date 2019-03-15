@@ -697,7 +697,11 @@ class YmReader(object):
                 d['id'] = ym_format
                 d['nb_registers'] = 16
             else:
-                raise Exception('Unsupported file format: ' + ym_format)
+                if ym_format == '!C-l':
+                    print('This is an LHA compressed YM file. Please extract the inner YM file first using 7zip or similar.')
+                    sys.exit()
+                else:
+                    raise Exception('Unknown or Unsupported file format: ' + ym_format)
 
         # ok, carry on.
         #b0:     Set if Interleaved data block.
