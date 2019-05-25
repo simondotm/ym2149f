@@ -63,6 +63,8 @@ ENABLE_VERBOSE = False
 
 ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN data file)
 
+
+
 # R00 = Channel A Pitch LO (8 bits)
 # R01 = Channel A Pitch HI (4 bits)
 # R02 = Channel B Pitch LO (8 bits)
@@ -623,6 +625,10 @@ class YmEnvelope():
 
 class YmReader(object):
 
+    # these are set only when outputting looped files
+    OUTPUT_LOOP_INTRO = False
+    OUTPUT_LOOP_SECTION = False
+
     def __init__(self, fd):
 
         # create instance of YM envelope generator
@@ -761,16 +767,35 @@ class YmReader(object):
     def __read_data_interleaved(self):
         #print "__read_data_interleaved"
         #print "file offset=" + str(self.__fd.tell())  
-       
+
+
         cnt  = self.__header['nb_frames']
+
         regs = []
         for i in xrange( self.__header['nb_registers']):
             regs.append(self.__fd.read(cnt))            
+
+        # support output of just the intro (for tunes with looping sections)       
+        loop_frame = self.__header['loop_frame']
+
+        if self.OUTPUT_LOOP_INTRO and loop_frame != 0:
+            self.__header['nb_frames'] = loop_frame
+            for i in range(self.__header['nb_registers']):
+                regs[i] = regs[i][0:loop_frame-1]
+
+        if self.OUTPUT_LOOP_SECTION and loop_frame != 0:
+            self.__header['nb_frames'] = cnt - loop_frame
+            for i in range(self.__header['nb_registers']):
+                regs[i] = regs[i][loop_frame:]
+
 
         if ENABLE_DEBUG:
             print " Loaded " + str(len(regs)) + " register data chunks"
             for r in xrange( self.__header['nb_registers']):
                 print " Register " + str(r) + " entries = " + str(len(regs[r]))
+
+
+
 
         #self.__data=[''.join(f) for f in zip(*regs)]
         self.__data = regs
@@ -860,7 +885,7 @@ class YmReader(object):
         #print get_register_data(1,0)
 
         # set default volumes at the start of the tune for all channels
-        if True:
+        if not self.OUTPUT_LOOP_SECTION:
             dv = 15 # default volume is 15 (silent)
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
             vgm_stream.extend( struct.pack('B', 128+(0<<5)+16+dv) ) # LATCH VOLUME C0
@@ -1154,7 +1179,8 @@ class YmReader(object):
         channel_lof_a = 0
         channel_lof_b = 0
         channel_lof_c = 0
-        channel_lof_multi = 0
+        channel_lof_multi2 = 0
+        channel_lof_multi3 = 0
         envelope_count = 0
 
         for i in xrange(cnt):
@@ -1183,8 +1209,10 @@ class YmReader(object):
                 channel_lof_c += 1
                 lof_channels += 1  
 
-            if lof_channels > 1:
-                channel_lof_multi += 1    
+            if lof_channels == 2:
+                channel_lof_multi2 += 1    
+            if lof_channels == 3:
+                channel_lof_multi3 += 1    
 
             # envelope usage analysis
             if ym_envelope_a or ym_envelope_b or ym_envelope_c:
@@ -1199,7 +1227,8 @@ class YmReader(object):
         print "  Channel A has " + str(channel_lof_a) + " low frequency tones"
         print "  Channel B has " + str(channel_lof_b) + " low frequency tones"
         print "  Channel C has " + str(channel_lof_c) + " low frequency tones"
-        print "  There were " + str(channel_lof_multi) + " frames where >1 channel were low frequency tones"
+        print "  There were " + str(channel_lof_multi2) + " frames where 2 channels were simultaneous low frequency tones"
+        print "  There were " + str(channel_lof_multi3) + " frames where 3 channels were simultaneous low frequency tones"
 
         bass_channel_bias = 0 # a
         if channel_lof_b > channel_lof_a and channel_lof_b > channel_lof_c:
@@ -2181,7 +2210,7 @@ if __name__ == '__main__':
     parser.add_argument("-f", "--filter", default='', metavar="<s>", help="Filter channels A,B,C,N <s> is a string, eg. -f AB")
     parser.add_argument("-a", "--attenuation", help="Force SN76489 attentuation mapping (volumes scaled from YM dB to SN dB) [Experimental]", default=False, action="store_true")
     parser.add_argument("-n", "--noenvelopes", help="Disable envelope simulation", default=False, action="store_true")
-    #parser.add_argument("-l", "--loops", help="Export two VGM files, one for intro and one for looping section", default=False, action="store_true")
+    parser.add_argument("-l", "--loops", help="Export two VGM files, one for intro and one for looping section", default=False, action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable verbose mode", action="store_true")
     parser.add_argument("-d", "--debug", help="Enable debug mode", action="store_true")
     args = parser.parse_args()
@@ -2226,6 +2255,11 @@ if __name__ == '__main__':
 
 
     ym_filename = src
+
+    if args.loops:
+        print "Exporting loop intro..."
+        YmReader.OUTPUT_LOOP_INTRO = True
+
     with open(ym_filename, "rb") as fd:
         ym = YmReader(fd)
         fd.close()  
@@ -2236,9 +2270,37 @@ if __name__ == '__main__':
             
 
         print "Loaded YM File."
-        vgm_filename = ym_filename[:ym_filename.rfind('.')] + ".vgm"
+        vgm_filename = ym_filename[:ym_filename.rfind('.')]
+        if YmReader.OUTPUT_LOOP_INTRO:
+            vgm_filename += ".intro"
+
+        vgm_filename += ".vgm"
         print vgm_filename
         ym.write_vgm( vgm_filename )
+
+    # export the looping section
+    if args.loops:
+        print "Exporting loop section..."
+
+        YmReader.OUTPUT_LOOP_INTRO = False
+        YmReader.OUTPUT_LOOP_SECTION = True
+        with open(ym_filename, "rb") as fd:
+            ym = YmReader(fd)
+            fd.close()  
+            
+            ym.dump_header()
+            header = ym.get_header()
+            data = ym.get_data()
+                
+
+            print "Loaded YM File."
+            vgm_filename = ym_filename[:ym_filename.rfind('.')] + ".loop.vgm"
+            print vgm_filename
+            ym.write_vgm( vgm_filename )
+
+
+
+
 
     song_min, song_sec = to_minsec(header['nb_frames'], header['frames_rate'])
     print ""
