@@ -18,8 +18,8 @@ This repo contains a script I've created to do the conversion so that you can li
 ym2sn.py : Convert Atari ST .YM files to SN76489 VGM music files
 Written in 2019 by Simon Morris, https://github.com/simondotm/ym2149f
 
-usage: ym2sn.py [-h] [-o <output>] [-c <n>] [-s <n>] [-m <n>] [-f <s>] [-a]
-                [-n] [-v] [-d]
+usage: ym2sn.py [-h] [-o <output>] [-c <n>] [-s <n>] [-r <n>] [-f <s>] [-b]
+                [-a] [-n] [-l] [-v] [-d]
                 input
 
 positional arguments:
@@ -34,28 +34,43 @@ optional arguments:
                         (4Mhz)
   -s <n>, --shift <n>   Set target SN76489 LFSR bit to <n> 15 or 16, default:
                         15 (BBC Micro)
-  -m <n>, --samplerate <n>
-                        Set envelope sample rate to <n> Hz (must be divisble
+  -r <n>, --rate <n>    Set envelope sample rate to <n> Hz (must be divisble
                         by 50!), default: 50Hz
   -f <s>, --filter <s>  Filter channels A,B,C,N <s> is a string, eg. -f AB
+  -b, --bass            Enable software bass (output VGM will not be hardware
+                        compliant for bass tones)
   -a, --attenuation     Force SN76489 attentuation mapping (volumes scaled
                         from YM dB to SN dB) [Experimental]
   -n, --noenvelopes     Disable envelope simulation
+  -l, --loops           Export two VGM files, one for intro and one for
+                        looping section
   -v, --verbose         Enable verbose mode
   -d, --debug           Enable debug mode
 
 
-
 ```
+### **Important Note**:
 
-
-Notes:
-
-* YM files are actually LHA compressed archives which contain a single file (usually also called .YM or .BIN)
+* `.YM` files are actually *LHA compressed archives* which contain a single file (usually also called `.YM` or `.BIN`)
 * This tool only works with the uncompressed inner YM file (as there are no Python LHA decoders I could find or easily install)
 * Therefore it is necessary to manually extract the inner YM file to feed to this script (using 7zip or similar archive tool)
 
 
+### Command Line Example:
+
+To convert a `.YM` file to `.VGM`
+```
+ym2sn.py file.ym
+```
+Will output `file.vgm` using default settings of:
+* periodic noise "simulated" bass
+* envelope simulation
+* 4Mhz clocked / 15-bit LFSR SN76489 (BBC Micro specs)
+* 50Hz playback rate 
+
+
+
+---
 
 ## How it works
 
@@ -110,11 +125,12 @@ YM Tone Frequency range from 30.525030525Hz to 125000.0Hz
 SN Tone Frequency range from 122.189638319Hz to 125000.0Hz
 SN Bass/PN Frequency range from 8.14597588791Hz to 8333.33333333Hz
 ```
-As we can see, the YM chip has slightly better dynamic range that the SN chip in the low end, which is why using the periodic noise generator on the SN chip allows us to 'simulate' that missing frequency range as best we can.
+As we can see, the YM chip has a wider dynamic range than the SN chip in the low end.
 
-Periodic noise on the BBC Micro however is a basket case in it's own right. See [here for more info](https://gist.github.com/simondotm/84a08066469866d7f2e6aad875e598be) on that if you are interested.
 
-### Conversion Process
+
+
+## Conversion Process
 
 What this all means is that it is reasonably easy to 'map' data for YM registers to data for SN registers, and recreate 'more-or-less' the same output.
 
@@ -123,11 +139,11 @@ The basic conversion process is as follows:
 1. Convert as best as possible the register updates going to the YM chip in each frame to an equivalent 'best fit' register set update for the SN chip
 1. Map the 4-bit output levels directly for each channel from YM -> SN
 1. Simulate the hardware envelopes, and apply attenuation as best we can* _(see below)_
-1. If tone frequencies are too low for the SN chip, map them to 'periodic noise' on the SN chip (typically bass lines), but give drum/noise sounds priority 
+1. If tone frequencies are too low for the SN chip, we map them to 'periodic noise' on the SN chip (typically bass lines), but give drum/noise sounds priority. OR we can use the software bass technique.
 1. If tone frequencies are still too high or too low for the SN chip, bring them back into range an octave at a time
 1. Where noise mixer is enabled, emulate this mix by computing aggregate volume for the SN noise channel across the 3 YM mixers -> 1 SN noise output
 1. _Ignore digi-drums (for now)_
-1. Spit out a VGM file of the converted YM tune
+1. Emit a VGM file of the converted YM tune
 
 Now we can play the conversion VGM in our favourite VGM player, or for playback on an actual SN chip, simply throw the packet of SN register writes (upto 11) at the chip each 50Hz frame and away we go.
 
@@ -138,6 +154,43 @@ See Bitshifters' [Twisted Brain Demo](https://bitshifters.github.io/posts/prods/
 ## Challenges
 ### Frequency Range
 The SN76489 frequency range is determined by its clock speed, and for higher clocked systems (such as the BBC Micro at 4Mhz) it is not possible to reproduce lower frequencies. The script does its best to simulate these using periodic noise where appropriate, however a more accurate render can be generated by setting a lower SN clock speed.
+
+
+### Using Periodic Noise for Bass
+We can use the "tuned" periodic noise generator on the SN chip to allow us to 'simulate' that missing frequency range. This technique is the default setting for `sn2ym.py`, and generally (depending on the tune) delivers a much nicer & richer output.  
+
+However, since there is only one periodic noise channel, we have to approximate bass as best we can - particularly in scenarios where multiple tone channels are playing low-frequency tones (in which case we pick the lowest frequency, with some bias toward the channel which we've determined contains the most "bass line" content). This technique generally works pretty well.
+
+The other compromise that using periodic noise for bass presents, is that we have to share/interleave our bass notes with percussion (since both are effectively "noises" and we only have 1 noise channel). We give percussive sounds priority over bass, which generally gives pleasing results.
+
+An important note here is that the tuning of Periodic noise on the SN76489 is influenced by which bit of the chip's LFSR (Linear feedback shift register) is tapped (bit 15 or bit 16).  The BBC Micro uses bit 15 (whereas other systems like the Sega Master System use bit 16). 
+
+See [here for more info](https://gist.github.com/simondotm/84a08066469866d7f2e6aad875e598be) on that if you are interested.
+
+### Software Simulated Bass
+
+The low-end frequencies that SN76489 hardware cannot reproduce (when the SN76489 is clocked at typical rates) range between 30-122Hz. The good news is that these are the type of frequencies that humble 8-bit CPU's can cope with and most systems have hardware timers that can accurately implement interrupts at such frequencies without overwhelming the CPU.
+
+It is therefore possible to reproduce these frequencies by implementing a "software square wave".
+
+First we set a target tone register to the highest frequency (eg. 125Khz - effectively constanst level output) and then we modulate the channel's attenuation at a given frequency to synthesize the correct duty cycle for a low frequency squarewave tone to be output.  
+
+Using this technique allows the full 12-bit range of the YM to be reproduced on the SN76489, and is a significant improvement over the periodic noise bass, since it does not limit bass to one channel or require the need to share the percussion/noise channel. 
+
+#### Software Bass - Data Format
+
+When the `-bass` option is enabled on the `ym2sn.py` commandline, the output VGM will be modified as follows:
+* Any tone register low-end frequencies outside the 10-bit hardware range of the SN76489 are adjusted:
+  * They are divided by 4 (2-bit shift down)
+  * Bit 15 of the 2-byte (16-bit) tone register data value is set. (In practice this will be bit 6 of the second DATA byte sent to a tone register).
+
+The software decoder must then interpret this bit as a "software bass" frequency and route the tone data to it's own squarewave generator instead of the hardware. 
+
+If this bit is not set, the tone data can be sent directly to the hardware as usual.
+
+Any VGM that is output using this setting will be VGM file-format compatible, but hardware-incompatible, so they will sound incorrect if played in a standard VGM player.  
+
+*Note: Ensure your VGM file processing toolchain does not mask out this bit (for example some tools might do this to enforce the 10-bit tone register format of the SN76489).*
 
 ### Envelopes
 Quite a lot of Atari ST tunes don't really use the envelope feature much, which makes conversions of these tunes a bit easier. 
@@ -165,9 +218,16 @@ Digi drums were a later innovation in the Atari ST music journey. Essentially th
 ## Conclusions
 So that pretty much sums it up. I was actually quite surprised how well the results turned out, so when I get chance I'll spend a bit more time on this as I think there are plenty of improvement areas!
 
+## Related Tools & Projects
+Other projects I've created for VGM:
 
+* [VGM/VGC music player for the 6502 BBC Micro](https://github.com/simondotm/vgm-player-bbc)
+* [VGM Compression tool for SN76489 VGM files](https://github.com/simondotm/vgm-packer)
+* [VGM Conversion tool for targetting different SN76489 clock speeds](https://github.com/simondotm/vgm-converter)
 
 ## References
+
+### Technical Info
 
 See [SMS Power](http://www.smspower.org/Development/SN76489) for some great technical info about the SN76489 PSG.
 
@@ -175,9 +235,18 @@ Chip manufacturer data sheets are also very useful references:
 * [SN76489](https://github.com/simondotm/ym2149f/blob/master/doc/SN76489.pdf)
 * [YM2149](https://github.com/simondotm/ym2149f/blob/master/doc/ym2149_DS.pdf)
 
+This project borrows from the good work by [FlorentFlament](https://github.com/FlorentFlament/ym2149-streamer).
+
+### YM Music Archives
+If you want to grab some YM files to play with, take a look [here](https://bulba.untergrund.net/music_e.htm).
+
+Direct YM archive downloads:
+* [CyBeR Goth's YMs](https://bulba.untergrund.net/faveym.7z) - Maybe not last edition. [Web-archive with source page](http://www.cybergoth.force9.co.uk/music.htm).
+* [YM Archive v5](https://bulba.untergrund.net/YM_Archive_v5.7z) - YM-music archive, ST-Sound player author point to download it. Original archive was on ST Sound Plesuredome, its fragment in [web-archive](http://www.brainbug.ch/stsound).
+* [Music in YM-format](https://bulba.untergrund.net/YM.7z) - (1997-1998) Archive with YM-music, years of YM-files creation are 1997-1998. No idea, where I've found it, and also where to find it now else.
+
 Other resources relating to [Atari ST music](Resources.md).
 
-This project borrows from the good work by [FlorentFlament](https://github.com/FlorentFlament/ym2149-streamer).
 
 
 

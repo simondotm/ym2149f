@@ -33,25 +33,12 @@ import binascii
 import math
 import os
 
+# Command line can override these defaults
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
 
 ENABLE_ENVELOPES = True     # enable this to simulate envelopes in the output
-ENABLE_NOISE = True         # enables noises to be processed
-ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
-ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
-ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
 ENABLE_ATTENUATION = False  # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
-
-ENABLE_ENVELOPE_MIX_HACK = True # wierd oddity fix where tone mix is disabled, but envelopes are enabled - EXPERIMENTAL
-
-OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
-SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 63=700Hz, 126=6300Hz (GOOD!) 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
-
-
-# legacy/non working debug flags
-FORCE_BASS_CHANNEL = -1     # set this to 0,1 or 2 (A/B/C) or -1, to make a specific channel always take the bass frequency. Not an elegant or useful approach.
-SIM_ENVELOPES = True       # set to true to use full volume for envelepe controlled sounds
 
 FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
@@ -61,8 +48,52 @@ FILTER_CHANNEL_N = False    # Noise channel
 ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
 ENABLE_VERBOSE = False
 
+
+# Runtime options (not command line options)
+ENABLE_NOISE = True         # enables noises to be processed
+ENABLE_NOISE_PITCH = True   # enables 'nearest match' fixed white noise frequency selection rather than fixed single frequency
+ENABLE_ENVELOPE_MIX_HACK = True # wierd oddity fix where tone mix is disabled, but envelopes are enabled - EXPERIMENTAL
+OPTIMIZE_VGM = True         # outputs delta register updates in the vgm rather than 1:1 register dumps
+SAMPLE_RATE = 1             # number of volume frames to process per YM frame (1=50Hz, 2=100Hz, 63=700Hz, 126=6300Hz (GOOD!) 147=7350Hz, 294=14700Hz, 441=22050Hz, 882=44100Hz)
+
+# legacy/non working debug flags
+SIM_ENVELOPES = True       # set to true to use full volume for envelepe controlled sounds
+
+
+# For testing only 
 ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN data file)
 
+#--------------------------------------------------------------------
+# Bass frequency processing settings
+#--------------------------------------------------------------------
+# Since the hardware SN76489 chip is limited to a frequency range determined by its clock rate, and also 10-bit precision,
+# so some low-end frequencies cannot be reproduced to match the 12-bit precision YM chip.
+#
+# To remedy this we have two techniques available:
+#   1. Use the periodic noise feature of the SN76489 to 'simulate' these lower frequencies (at the cost of interleaving percussion and some approximation because we can only have one channel playing PN)
+#   2. Simulate the low-end frequencies in software by implementing a low frequency square wave using software timers to manipulate attenuation on the tone channels
+
+# Periodic noise based bass settings (default)
+ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
+ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
+FORCE_BASS_CHANNEL = -1     # set this to 0,1 or 2 (A/B/C) or -1, to make a specific channel always take the bass frequency. Not an elegant or useful approach.
+
+
+# Software bass settings (overrides periodic noise bass)
+# Enabling this setting will create output register data that is not hardware compliant, so any decoder must interpret the data correctly to synthesize bass frequencies.
+# The output VGM file is VGM compatible, but it will not sound correct when played due to the data modifications.
+# 
+# The approach is as follows:
+#   For any frequency on a tone channel that is below the SN76489 hardware tone frequency range (ie. value > 10-bits) 
+#    We divide the tone register value by 4, store that in the 10-bit output, but set bit 6 in the high byte DATA register.
+#    The decoder must check for this bit being set and interpet the tone register value as the duty cycle time for a software generated squarewave. 
+
+ENABLE_SOFTWARE_BASS = False
+if ENABLE_SOFTWARE_BASS:
+    TONE_RANGE = 4095
+    ENABLE_BASS_TONES = False
+else:
+    TONE_RANGE = 1023
 
 
 # R00 = Channel A Pitch LO (8 bits)
@@ -862,11 +893,11 @@ class YmReader(object):
 
         # SN has 10 bits of precision vs YM's 12 bits
         sn_freq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0)
-        sn_freq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0)
+        sn_freq_lo = float(vgm_clock) / (2.0 * float(TONE_RANGE) * 16.0)
 
         # SN can generate periodic noise in the lower Hz range
         sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * float(LFSR_BIT))
-        sn_pfreq_lo = float(vgm_clock) / (2.0 * float(1023) * 16.0 * float(LFSR_BIT))
+        sn_pfreq_lo = float(vgm_clock) / (2.0 * float(TONE_RANGE) * 16.0 * float(LFSR_BIT))
 
         print " YM clock is " + str(clock)
         print " SN clock is " + str(vgm_clock)
@@ -1048,11 +1079,21 @@ class YmReader(object):
                 # due to the integer maths, some precision is lost at the lower end
                 sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
 
-                # clamp range to 10 bits
-                if sn_tone > 1023:
-                    sn_tone = 1023
-                    print " WARNING: Clipped SN tone to 1023 (target_freq="+str(target_freq)+" Hz)"
-                    # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+                # clamp range to 10 bits (or adjust if bit bass enabled)
+                if ENABLE_SOFTWARE_BASS:
+                    if sn_tone > 1023:
+                        sn_tone >>= 2
+                        sn_tone |= 16384 
+                        print " INFO: Exported bit bass tone (target_freq="+str(target_freq)+" Hz)"
+                        # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+                else:
+                    if sn_tone > 1023:
+                        sn_tone = 1023
+                        print " WARNING: Clipped SN tone to 1023 (target_freq="+str(target_freq)+" Hz)"
+                        # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+
+
+
                 if sn_tone < 1:
                     sn_tone = 1
                     print " WARNING: Clipped SN tone to 1 (target_freq="+str(target_freq)+" Hz)"
@@ -1104,10 +1145,21 @@ class YmReader(object):
             
             # due to the integer maths, some precision is lost at the lower end
             sn_tone = int(round(sn_tone))	# using round minimizes error margin at lower precision
-            # clamp range to 10 bits
-            if sn_tone > 1023:
-                sn_tone = 1023
-                print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+
+            # clamp range to 10 bits (or adjust if bit bass enabled)
+            if ENABLE_SOFTWARE_BASS:
+                if sn_tone > 1023:
+                    sn_tone >>= 2
+                    sn_tone |= 8192 
+                    print " INFO: Exported bit bass tone (target_freq="+str(target_freq)+" Hz)"
+                    # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+            else:
+                if sn_tone > 1023:
+                    sn_tone = 1023
+                    print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+
+
+
             if sn_tone < 1:
                 sn_tone = 1
                 print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
@@ -1127,13 +1179,35 @@ class YmReader(object):
         # given a channel and tone value, output vgm command
         #--------------------------------------------------------------
         def output_sn_tone(channel, tone):
+            if tone & 16384:
+                print " BIT BANGED TONE: " + str(tone)
+            if ENABLE_SOFTWARE_BASS:
+                if tone > 4095:
+                    print " ERROR (output_sn_tone): tone > 4095"
+                tone_mask = 127
+            else: 
+                if tone > 1023:
+                    print " ERROR (output_sn_tone): tone > 1023"
+                tone_mask = 63
 
-            if tone > 1023:
-                print " ERROR (output_sn_tone): tone > 1023"
             if tone < 0:
                 print " ERROR (output_sn_tone): tone < 0"
             r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
-            r_hi = (tone >> 4) & 63
+
+            if ENABLE_SOFTWARE_BASS:
+                if tone & 16384:
+                    r_hi = ((tone & 1023) >> 4) & tone_mask
+                    r_hi |= 64
+                else:
+                    r_hi = (tone >> 4) & tone_mask
+            else:
+                r_hi = (tone >> 4) & tone_mask
+
+
+
+
+            if r_hi & 64:
+                print "DEFINITELY BIT BANGED OUTPUT"
 
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
             vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
@@ -1141,7 +1215,7 @@ class YmReader(object):
             vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
 
             raw_stream.extend( struct.pack('B', (tone & 15)) )
-            raw_stream.extend( struct.pack('B', (tone >> 4) & 63) )
+            raw_stream.extend( struct.pack('B', (tone >> 4) & tone_mask) )
 
         #--------------------------------------------------------------
         # output a noise tone on channel 3
@@ -2206,8 +2280,9 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--output", metavar="<output>", help="write VGM file <output> (default is '[input].vgm')")
     parser.add_argument("-c", "--clock", type=float, default=4.0, metavar="<n>", help="Set target SN76489 clock rate to <n> Mhz, default: 4.0 (4Mhz)")
     parser.add_argument("-s", "--shift", type=int, default=15, metavar="<n>", help="Set target SN76489 LFSR bit to <n> 15 or 16, default: 15 (BBC Micro)")
-    parser.add_argument("-m", "--samplerate", type=int, default=50, metavar="<n>", help="Set envelope sample rate to <n> Hz (must be divisble by 50!), default: 50Hz")
+    parser.add_argument("-r", "--rate", type=int, default=50, metavar="<n>", help="Set envelope sample rate to <n> Hz (must be divisble by 50!), default: 50Hz")
     parser.add_argument("-f", "--filter", default='', metavar="<s>", help="Filter channels A,B,C,N <s> is a string, eg. -f AB")
+    parser.add_argument("-b", "--bass", help="Enable software bass (output VGM will not be hardware compliant for bass tones)", default=False, action="store_true")
     parser.add_argument("-a", "--attenuation", help="Force SN76489 attentuation mapping (volumes scaled from YM dB to SN dB) [Experimental]", default=False, action="store_true")
     parser.add_argument("-n", "--noenvelopes", help="Disable envelope simulation", default=False, action="store_true")
     parser.add_argument("-l", "--loops", help="Export two VGM files, one for intro and one for looping section", default=False, action="store_true")
@@ -2237,11 +2312,16 @@ if __name__ == '__main__':
         ENABLE_ENVELOPES = False
         SIM_ENVELOPES = False
 
-    if (args.samplerate % 50) != 0:
+    if (args.softwarebass):
+        ENABLE_SOFTWARE_BASS = True
+        TONE_RANGE = 4095
+        ENABLE_BASS_TONES = False
+
+    if (args.rate % 50) != 0:
         print("ERROR: Envelope sample rate must be divisible by 50Hz.")
         sys.exit()
 
-    SAMPLE_RATE = int(args.samplerate / 50)
+    SAMPLE_RATE = int(args.rate / 50)
     
     if (len(args.filter) != 0):
         FILTER_CHANNEL_A = str.find(args.filter, 'A') != -1
