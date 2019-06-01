@@ -2312,7 +2312,7 @@ if __name__ == '__main__':
         ENABLE_ENVELOPES = False
         SIM_ENVELOPES = False
 
-    if (args.softwarebass):
+    if (args.bass):
         ENABLE_SOFTWARE_BASS = True
         TONE_RANGE = 4095
         ENABLE_BASS_TONES = False
