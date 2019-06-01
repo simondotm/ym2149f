@@ -906,6 +906,12 @@ class YmReader(object):
         print " SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz"
         print " SN Bass Frequency range from " + str(sn_pfreq_lo) + "Hz to " + str(sn_pfreq_hi) + "Hz"
 
+        if ENABLE_SOFTWARE_BASS:
+            print " + Software Bass is ENABLED"
+        if ENABLE_BASS_TONES:
+            print " + Periodic Noise Bass is ENABLED"
+        if ENABLE_ENVELOPES:
+            print " + Envelope Emulation is ENABLED"
 
         def get_register_data(register, frame):
             return int(binascii.hexlify(regs[register][frame]), 16)
@@ -1082,10 +1088,9 @@ class YmReader(object):
                 # clamp range to 10 bits (or adjust if bit bass enabled)
                 if ENABLE_SOFTWARE_BASS:
                     if sn_tone > 1023:
-                        sn_tone >>= 2
-                        sn_tone |= 16384 
-                        print " INFO: Exported bit bass tone (target_freq="+str(target_freq)+" Hz)"
-                        # this could result in bad tuning, depending on why it occurred. better to reduce freq?
+                        sn_tone >>= 2       # reduce tone frequency by 2 octaves
+                        sn_tone |= 16384    # set bit 15 (bit 6 of DATA byte)
+                        #print " INFO: Exported bit bass tone (target_freq="+str(target_freq)+" Hz)"
                 else:
                     if sn_tone > 1023:
                         sn_tone = 1023
@@ -1179,11 +1184,11 @@ class YmReader(object):
         # given a channel and tone value, output vgm command
         #--------------------------------------------------------------
         def output_sn_tone(channel, tone):
-            if tone & 16384:
-                print " BIT BANGED TONE: " + str(tone)
+            #if tone & 16384:
+            #    print " BIT BANGED TONE: " + str(tone)
             if ENABLE_SOFTWARE_BASS:
-                if tone > 4095:
-                    print " ERROR (output_sn_tone): tone > 4095"
+                #if tone > 4095:
+                #    print " ERROR (output_sn_tone): tone > 4095"
                 tone_mask = 127
             else: 
                 if tone > 1023:
@@ -1192,12 +1197,15 @@ class YmReader(object):
 
             if tone < 0:
                 print " ERROR (output_sn_tone): tone < 0"
+
             r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
 
+            # If software bass is enabled, the output tone will have a flag set if "low frequency"
             if ENABLE_SOFTWARE_BASS:
+                # check for "low frequency" flag
                 if tone & 16384:
                     r_hi = ((tone & 1023) >> 4) & tone_mask
-                    r_hi |= 64
+                    r_hi |= 64  # set bit 6 of the hi (DATA) byte
                 else:
                     r_hi = (tone >> 4) & tone_mask
             else:
@@ -1206,8 +1214,8 @@ class YmReader(object):
 
 
 
-            if r_hi & 64:
-                print "DEFINITELY BIT BANGED OUTPUT"
+            #if r_hi & 64:
+            #    print "DEFINITELY BIT BANGED OUTPUT"
 
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
             vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
