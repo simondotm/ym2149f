@@ -177,6 +177,8 @@ First we set a target tone register to the highest frequency (eg. 125Khz - effec
 
 Using this technique allows the full 12-bit range of the YM to be reproduced on the SN76489, and is a significant improvement over the periodic noise bass, since it does not limit bass to one channel or require the need to share the percussion/noise channel. 
 
+*Credit, Kudos & Thanks goes to [@HexWab](https://github.com/hexwab) for realising and proving this particular innovation.*
+
 #### Software Bass - Data Format
 
 When the `-bass` option is enabled on the `ym2sn.py` commandline, the output VGM will be modified as follows:
@@ -245,7 +247,7 @@ Direct YM archive downloads:
 * [YM Archive v5](https://bulba.untergrund.net/YM_Archive_v5.7z) - YM-music archive, ST-Sound player author point to download it. Original archive was on ST Sound Plesuredome, its fragment in [web-archive](http://www.brainbug.ch/stsound).
 * [Music in YM-format](https://bulba.untergrund.net/YM.7z) - (1997-1998) Archive with YM-music, years of YM-files creation are 1997-1998. No idea, where I've found it, and also where to find it now else.
 
-Other resources relating to [Atari ST music](docs/Resources.md).
+Other resources relating to [Atari ST music](doc/Resources.md).
 
 
 
