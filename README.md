@@ -60,9 +60,9 @@ optional arguments:
 
 To convert a `.YM` file to `.VGM`
 ```
-ym2sn.py file.ym
+ym2sn.py example/Androids.ym
 ```
-Will output `file.vgm` using default settings of:
+Will output `example/Androids.vgm` using default settings of:
 * periodic noise "simulated" bass
 * envelope simulation
 * 4Mhz clocked / 15-bit LFSR SN76489 (BBC Micro specs)
@@ -245,7 +245,7 @@ Direct YM archive downloads:
 * [YM Archive v5](https://bulba.untergrund.net/YM_Archive_v5.7z) - YM-music archive, ST-Sound player author point to download it. Original archive was on ST Sound Plesuredome, its fragment in [web-archive](http://www.brainbug.ch/stsound).
 * [Music in YM-format](https://bulba.untergrund.net/YM.7z) - (1997-1998) Archive with YM-music, years of YM-files creation are 1997-1998. No idea, where I've found it, and also where to find it now else.
 
-Other resources relating to [Atari ST music](Resources.md).
+Other resources relating to [Atari ST music](docs/Resources.md).
 
 
 
