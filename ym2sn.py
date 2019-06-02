@@ -1155,8 +1155,8 @@ class YmReader(object):
             if ENABLE_SOFTWARE_BASS:
                 if sn_tone > 1023:
                     sn_tone >>= 2
-                    sn_tone |= 8192 
-                    print " INFO: Exported bit bass tone (target_freq="+str(target_freq)+" Hz)"
+                    sn_tone |= 16384 
+                    print " WARNING: Exported bit bass tone in periodic noise ?? (target_freq="+str(target_freq)+" Hz)"
                     # this could result in bad tuning, depending on why it occurred. better to reduce freq?
             else:
                 if sn_tone > 1023:
