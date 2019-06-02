@@ -2301,8 +2301,10 @@ if __name__ == '__main__':
 
     src = args.input
     dst = args.output
+    print "output file=" + dst
     if dst == None:
         dst = os.path.splitext(src)[0] + ".vgm"
+
 
     # check for missing files
     if not os.path.isfile(src):
@@ -2358,12 +2360,13 @@ if __name__ == '__main__':
             
 
         print "Loaded YM File."
-        vgm_filename = ym_filename[:ym_filename.rfind('.')]
+
+        vgm_filename = dst[:dst.rfind('.')]
         if YmReader.OUTPUT_LOOP_INTRO:
             vgm_filename += ".intro"
 
         vgm_filename += ".vgm"
-        print vgm_filename
+        print "Output file: '" + vgm_filename + "'"
         ym.write_vgm( vgm_filename )
 
     # export the looping section
