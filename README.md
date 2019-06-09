@@ -72,6 +72,23 @@ Will output `example/Androids.vgm` using default settings of:
 
 ---
 
+## YM Dump Utility
+
+This repo also contains a utility script called `ymdump.py` which will take a `.YM` file containing `YM2149` music and export a `.YMR` file which is essentially the 'raw` YM2149 register data stored as 14 bytes x N frames (where 1 frame is a 50Hz or 60Hz update as defined as the playback rate in the source YM file).
+
+This is useful for testing purposes or if you ever need to stream raw YM data to a chip, because YM files are often non-interleaved format which requires random access to the file rather than byte-streamed.
+
+`ymdump.py` does not strip any `.YM` specific format data (such as the special case usage of unused bits in the sound chip register data).
+
+### Example Usage
+
+```
+ymdump.py example\Androids.ym -o example\Androids.ymr
+```
+
+
+---
+
 ## How it works
 
 Atari ST music is archived these days in two formats:
