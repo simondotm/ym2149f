@@ -34,6 +34,8 @@ import subprocess
 from os.path import basename
 from string import Formatter
 
+FIXED_LENGTH = 50* 120
+ENABLE_ADSR = True #False
 
 ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
 ENABLE_VERBOSE = False
@@ -74,6 +76,17 @@ attack_table = [ 2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5
 
 SID_CLOCK = 1000000
 YM_CLOCK = 2000000
+YM_RATE = 50
+
+# TODO:
+# linear-to-logarithmic volume ramp for YM
+# check ADSR calcs are accurate
+# what does TEST do?
+# sampling rate
+# wierd beeps
+# support noise
+# waveform sim?
+
 
 # YM REGISTERS
 
@@ -101,6 +114,70 @@ YM_CLOCK = 2000000
 
 # SID internals http://forum.6502.org/viewtopic.php?f=8&t=4150
 # SID internals from Bob Yannes Interview http://sid.kubarth.com/articles/interview_bob_yannes.html
+
+
+
+# Taken from: https://github.com/true-grue/ayumi/blob/master/ayumi.c
+# However, it doesn't marry with the YM2149 spec sheet, nor with the anecdotal reports that the YM attentuation steps in -1.5dB increments. Still, I'm gonna run with the emulator version.
+ym_amplitude_table = [
+    0.0, 0.0,
+    0.00465400167849, 0.00772106507973,
+    0.0109559777218, 0.0139620050355,
+    0.0169985503929, 0.0200198367285,
+    0.024368657969, 0.029694056611,
+    0.0350652323186, 0.0403906309606,
+    0.0485389486534, 0.0583352407111,
+    0.0680552376593, 0.0777752346075,
+    0.0925154497597, 0.111085679408,
+    0.129747463188, 0.148485542077,
+    0.17666895552, 0.211551079576,
+    0.246387426566, 0.281101701381,
+    0.333730067903, 0.400427252613,
+    0.467383840696, 0.53443198291,
+    0.635172045472, 0.75800717174,
+    0.879926756695, 1.0 ]
+
+
+# get the normalized linear (float) amplitude for a 5 bit level
+def get_ym_amplitude(v):
+    if True:
+        return ym_amplitude_table[v]
+    else:
+        if v == 0:
+            a = 0.0
+        else:
+            a = math.pow(10, ((-0.75*(31-v))/10) )
+        #print " Amplitude of volume " + str(v) + " is " + str(a)
+        a = min(1.0, a)
+        a = max(0.0, a)
+        return a
+
+# given an amplitude (0-1), return the closest matching YM 5-bit volume level
+def get_ym_volume(a):
+    if True:
+        dist = 1<<31
+        index = 0
+        for n in range(32):
+            ya = ym_amplitude_table[n]
+            p = a - ya
+            d = p * p
+            # we always round to the nearest louder level (so we are never quieter than target level)
+            if d < dist and ya >= a:
+                dist = d
+                index = n
+
+        return index
+    else:        
+        if (a == 0.0):
+            v = 0
+        else:
+            v = int( 31 - ( (10*math.log(a, 10)) / -0.75 ) )
+        #print "  Volume of amplitude " + str(a) + " is " + str(v)
+        #if v > 31:
+        #    print "TITS"
+        v = min(31, v)
+        v = max(0, v)
+        return v      
 
 
 # Class to manage simulated state of a SID voice based on register settings
@@ -157,6 +234,19 @@ class SidVoice(object):
     def voiceId(self):
         return "V" + str(self.__voiceid) + " "
 
+    def isNoise(self):
+        return self.__noise == True
+
+    def isPulse(self):
+        return self.__pulse == True
+
+    def isTriangle(self):
+        return self.__triangle == True
+
+    def isSaw(self):
+        return self.__sawtooth == True
+
+
     # register 4 - control (8-bits)
     def set_control(self, c):
 
@@ -205,7 +295,7 @@ class SidVoice(object):
 
     # get the current envelope level / amplitude for this voice (0-255)
     def get_envelope_level(self):
-        return (self.__envelope_level >> 16) & 255
+        return self.__envelope_level #(self.__envelope_level >> 16) & 255
 
     def get_waveform_level(self):
         return self.__waveform_level
@@ -261,30 +351,45 @@ class SidVoice(object):
         sustain_target = sustain_table[self.__sustain] << 24
 
         # iterate the ADSR logic for each tick. Suboptimal for now.
-        #iteration_count = t
-        #if (self.__envelope_cycle == SidVoice.EnvelopeCycle_Attack) and ((self.__envelope_counter + attack_rate*t) <= precision):
-        #    t = 1
+        iteration_count = t
+        iteration_scale = 1
+        if (self.__envelope_cycle == SidVoice.EnvelopeCycle_Attack) and ((self.__envelope_counter + attack_rate*t) <= precision):
+            iteration_scale = t
+            iteration_count = 1
+            print(" - Optimized attack for voice " + str(self.__voiceid))
+        elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Decay) and ((self.__envelope_counter - decay_rate*t) > sustain_target):
+            iteration_scale = t
+            iteration_count = 1
+            print(" - Optimized decay for voice " + str(self.__voiceid))
+        elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Release) and ((self.__envelope_counter - release_rate*t) >= 0):
+            iteration_scale = t
+            iteration_count = 1
+            print(" - Optimized release for voice " + str(self.__voiceid))
+
+        print(" - " + str(iteration_count) + " ADSR Iterations for voice " + str(self.__voiceid))
+
         #elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Decay) and ((self.__envelope_counter - decay_rate*t) > 0):
         #    t = 1
 
-        for n in range(t):
+        for n in range(iteration_count):
+            #print("Iteration count=" + str(iteration_count) + ", n=" + str(n) + ", " #" + str(n))
             if self.__envelope_cycle == SidVoice.EnvelopeCycle_Inactive:
                 # nothing to do
                 break
             # attack cycle
             elif self.__envelope_cycle == SidVoice.EnvelopeCycle_Attack:
-                self.__envelope_counter += attack_rate
+                self.__envelope_counter += attack_rate * iteration_scale
                 self.__envelope_level = self.__envelope_counter >> 24
                 if self.__envelope_level >= 255:
                     self.__envelope_level = 255
                     self.__envelope_cycle = SidVoice.EnvelopeCycle_Decay
             # decay cycle
             elif self.__envelope_cycle == SidVoice.EnvelopeCycle_Decay:
-                self.__envelope_counter -= decay_rate
-                self.__envelope_level = self.__envelope_counter >> 24
-                if self.__envelope_level <= sustain_target:
-                    self.__envelope_level = sustain_target 
+                self.__envelope_counter -= decay_rate * iteration_scale
+                if self.__envelope_counter <= sustain_target:
+                    self.__envelope_counter = sustain_target 
                     self.__envelope_cycle = SidVoice.EnvelopeCycle_Sustain
+                self.__envelope_level = self.__envelope_counter >> 24
             elif self.__envelope_cycle == SidVoice.EnvelopeCycle_Sustain:
                 # sustain cycle
                 # nothing to do
@@ -294,7 +399,7 @@ class SidVoice(object):
                 
             elif self.__envelope_cycle == SidVoice.EnvelopeCycle_Release:
                 # release cycle
-                self.__envelope_counter -= release_rate
+                self.__envelope_counter -= release_rate * iteration_scale
                 self.__envelope_level = self.__envelope_counter >> 24
                 if self.__envelope_level <= 0:
                     self.__envelope_level = 0
@@ -442,11 +547,6 @@ class SidReader(object):
 
             # convert to data
 
-            #freq_data = hex2int(freq_data)
-            #wf_data = hex2int(wf_data)
-            #adsr_data = hex2int(adsr_data)
-            #pul_data = hex2int(pul_data)
-
             data = {}
 
             if isSet(freq):
@@ -481,6 +581,13 @@ class SidReader(object):
         sid_voice2 = self.__sid.get_voice(1)
         sid_voice3 = self.__sid.get_voice(2)
 
+        # stats
+        #stats = {}
+        #stats["pulse_frames"] = 0
+        #stats["triangle_frames"] = 0
+        #stats["noise_frames"]
+
+
         # parse the SID register dump
         header = True
         for x in content:
@@ -493,7 +600,7 @@ class SidReader(object):
                 frameId = int(frame[1])
 
                 # test early out, 10seconds 
-                if (frameId > 50*10):
+                if (FIXED_LENGTH > 0) and (frameId > FIXED_LENGTH):
                     break
 
                 print("-------------------------------------------")
@@ -507,24 +614,7 @@ class SidReader(object):
                 voice2 = parse_voice(frame[3]) # voice2
                 voice3 = parse_voice(frame[4]) # voice3
 
-                # channel A
-                
-                # tones
-                if "freq" in voice1: 
-                    tone1 = sid_tone_to_ym_tone( voice1["freq"] )
-                    registers[0] = tone1 & 255
-                    registers[1] = (tone1 >> 8) & 255
-
-                if "freq" in voice2: 
-                    tone2 = sid_tone_to_ym_tone( voice2["freq"] )
-                    registers[2] = tone2 & 255
-                    registers[3] = (tone2 >> 8) & 255
-
-                if "freq" in voice3: 
-                    tone3 = sid_tone_to_ym_tone( voice3["freq"] )
-                    registers[4] = tone3 & 255
-                    registers[5] = (tone3 >> 8) & 255
-
+                # control registers
                 if "wf" in voice1:
                     sid_voice1.set_control( voice1["wf"] )
 
@@ -533,6 +623,24 @@ class SidReader(object):
 
                 if "wf" in voice3:
                     sid_voice3.set_control( voice3["wf"] )
+
+
+                # tones
+                if "freq" in voice1 and not sid_voice1.isNoise(): 
+                    tone1 = sid_tone_to_ym_tone( voice1["freq"] )
+                    registers[0] = tone1 & 255
+                    registers[1] = (tone1 >> 8) & 255
+
+                if "freq" in voice2 and not sid_voice2.isNoise(): 
+                    tone2 = sid_tone_to_ym_tone( voice2["freq"] )
+                    registers[2] = tone2 & 255
+                    registers[3] = (tone2 >> 8) & 255
+
+                if "freq" in voice3 and not sid_voice3.isNoise():  
+                    tone3 = sid_tone_to_ym_tone( voice3["freq"] )
+                    registers[4] = tone3 & 255
+                    registers[5] = (tone3 >> 8) & 255
+
 
                 if "adsr" in voice1:
                     sid_voice1.set_envelope( voice1["adsr"] >> 8, voice1["adsr"] & 255 )
@@ -543,21 +651,32 @@ class SidReader(object):
                 if "adsr" in voice3:
                     sid_voice3.set_envelope( voice3["adsr"] >> 8, voice3["adsr"] & 255 )
 
+                registers[7] = 8+16+32 # only tones, no noise
+
+
+                def sid_to_ym_volume(v):
+                    fv = float(v) / 255.0
+                    ymv = get_ym_volume(fv)
+                    print("SID Volume=" + str(v) + ", YM Volume=" + str(ymv) + ", Linear YM Volume=" + str(v>>3))
+                    return ymv
 
                 # volumes
-                registers[8] = sid_voice1.get_envelope_level() >> 4 
-                registers[9] = sid_voice2.get_envelope_level() >> 4 
-                registers[10] = sid_voice3.get_envelope_level() >> 4 
-
-                if True:
+                if ENABLE_ADSR:
+                    # linear sid volume output from the envelope generator is
+                    # converted to logarithmic 4-bit amplitude on the YM
+                    registers[8] = sid_to_ym_volume( sid_voice1.get_envelope_level() ) >> 1
+                    registers[9] = sid_to_ym_volume( sid_voice2.get_envelope_level() ) >> 1
+                    registers[10] = sid_to_ym_volume( sid_voice3.get_envelope_level() ) >> 1
+                    # advance virtual SID clock
+                    # ADSR resolution is 2ms, so ticks slower than this will 
+                    # be an approximate rendering of the envelope.
+                    # Only other option is to run the playback at 500Hz instead of 50Hz
+                    ticks = int(SID_CLOCK / YM_RATE)
+                    self.__sid.tick( ticks )
+                else:
                     registers[8] = 15 
                     registers[9] = 15 
                     registers[10] = 15 
-
-                registers[7] = 8+16+32 # only tones, no noise
-
-                ticks = int(SID_CLOCK / 50)
-                self.__sid.tick( ticks )
 
 
 
@@ -583,7 +702,7 @@ class SidReader(object):
         ym_data.extend(struct.pack('>I', 1))	# song_attributes
         ym_data.extend(struct.pack('>H', 0)) # nb_digidrums
         ym_data.extend(struct.pack('>I', YM_CLOCK)) # chip_clock
-        ym_data.extend(struct.pack('>H', 50))	# frames_rate
+        ym_data.extend(struct.pack('>H', YM_RATE))	# frames_rate
         ym_data.extend(struct.pack('>I', 0)) # loop_frame
         ym_data.extend(struct.pack('>H', 0)) # extra_data
         ym_data.extend(b'name\0')            # Song name
