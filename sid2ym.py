@@ -33,6 +33,7 @@ import os
 import subprocess
 from os.path import basename
 from string import Formatter
+from timeit import default_timer as timer
 
 FIXED_LENGTH = 50* 120
 ENABLE_ADSR = True #False
@@ -183,6 +184,15 @@ def get_ym_volume(a):
 # Class to manage simulated state of a SID voice based on register settings
 class SidVoice(object):
 
+    # class statics
+
+    # these tables are mappings of ADSR register values to ms/step
+    attack_table = [ 2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000 ]
+    decayrelease_table = [ 6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000 ]
+    # sustain table maps S of the ADSR registers to a target 8-bit volume from a 4-bit setting
+    sustain_table = [ 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff ]
+
+    # Envelope cycles
     EnvelopeCycle_Inactive = 0
     EnvelopeCycle_Attack = 1
     EnvelopeCycle_Decay = 2
@@ -300,32 +310,32 @@ class SidVoice(object):
     def get_waveform_level(self):
         return self.__waveform_level
 
-    # advance clock where t is 1/SID_CLOCK
-    def tick(self, t):
-
-        self.__accumulator += int(t * self.__frequency)
-
-        # calculate the waveform D/A output (12-bit DAC)
-        # sawtooth is the top 12 bits of the accumulator
-        sawtooth_level = self.__accumulator >> 12
-
-        # pulse output is the top 12 bits of the accumulator matching the pulsewidth register
-        pulse_level = 4095 if ((self.__accumulator >>12 ) == self.__pulsewidth) else 0
-
-        # triangle output is the top 12 bits, where the low 11 bits of this are inverted by the top bit, then shifted left
-        triangle_invert = 2047 if (self.__accumulator & 8388608) else 0
-        triangle_level = (((self.__accumulator >> 4) ^ triangle_invert) << 1) & 4095
-
-        sawtooth_level = sawtooth_level if self.__sawtooth else 0
-        pulse_level = pulse_level if self.__pulse else 0
-        triangle_level = triangle_level if self.__triangle else 0
-
-        # waveform generator outputs are AND'ed together
-        self.__waveform_level = sawtooth_level & pulse_level & triangle_level
+    # advance envelope clock where t is 1/SID_CLOCK
+    # returns true if ADSR is active
+    def tick_envelope(self, t):
 
         #----------------------------
         # envelope generation
         #----------------------------
+
+        adsr_active = True
+
+        # Some early out scenarios can be handled here
+        # ADSR doesn't need always updating so that's work we can detect & skip 
+        if (self.__envelope_cycle == SidVoice.EnvelopeCycle_Sustain):
+            # if we're in sustain cycle, its an early out because only Gate change will affect it
+            # and that cannot happen within this logic
+            print(" - Optimized sustain for voice " + str(self.__voiceid))
+            adsr_active = False
+        elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Inactive):
+            print(" - Optimized ADSR for voice " + str(self.__voiceid) + " because Inactive")
+            adsr_active = False
+
+        # early out if inactive
+        if not adsr_active:
+            return adsr_active
+        
+
 
         # gate bit set to one triggers the ADSR cycle
         # attack phase rises from 0-255 at the ms rate specified by attack register
@@ -336,19 +346,16 @@ class SidVoice(object):
         # gate bit can be cleared at any time to trigger release phase, even if ads phase incomplete
         # if gate bit is set before release phase has completed, the envelope generator continues attack phase from current setting
 
-        # these tables are mappings of register values to ms/step
-        attack_table = [ 2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000 ]
-        decayrelease_table = [ 6, 24, 48, 72, 114, 168, 204, 240, 300, 750, 1500, 2400, 3000, 9000, 15000, 24000 ]
-        sustain_table = [ 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff ]
 
         # envelope process
         # see also https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/resid/envelope.cc
 
         precision = (2 ** 31)
-        attack_rate = int(precision / (attack_table[self.__attack] * SID_CLOCK / 1000))
-        decay_rate = int(precision / (decayrelease_table[self.__decay] * SID_CLOCK / 1000))
-        release_rate = int(precision / (decayrelease_table[self.__release] * SID_CLOCK / 1000))
-        sustain_target = sustain_table[self.__sustain] << 24
+        attack_rate = int(precision / (SidVoice.attack_table[self.__attack] * SID_CLOCK / 1000))
+        decay_rate = int(precision / (SidVoice.decayrelease_table[self.__decay] * SID_CLOCK / 1000))
+        release_rate = int(precision / (SidVoice.decayrelease_table[self.__release] * SID_CLOCK / 1000))
+        sustain_target = SidVoice.sustain_table[self.__sustain] << 24
+
 
         # iterate the ADSR logic for each tick. Suboptimal for now.
         iteration_count = t
@@ -365,8 +372,17 @@ class SidVoice(object):
             iteration_scale = t
             iteration_count = 1
             print(" - Optimized release for voice " + str(self.__voiceid))
-
-        print(" - " + str(iteration_count) + " ADSR Iterations for voice " + str(self.__voiceid))
+        elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Sustain):
+            # if we're in sustain cycle, its an early out because only Gate change will affect it
+            iteration_count = 1
+            adsr_active = False
+            print(" - Optimized sustain for voice " + str(self.__voiceid))
+        elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Inactive):
+            iteration_count = 1
+            adsr_active = False
+            print(" - Optimized ADSR for voice " + str(self.__voiceid) + " because Inactive")
+        else:
+            print(" - " + str(iteration_count) + " ADSR Iterations for voice " + str(self.__voiceid) + ", cycle=" + str(self.__envelope_cycle))
 
         #elif (self.__envelope_cycle == SidVoice.EnvelopeCycle_Decay) and ((self.__envelope_counter - decay_rate*t) > 0):
         #    t = 1
@@ -406,6 +422,55 @@ class SidVoice(object):
                     self.__envelope_cycle = SidVoice.EnvelopeCycle_Inactive
                     break
 
+        return adsr_active
+
+
+    # advance clock where t is 1/SID_CLOCK
+    def tick(self, t):
+
+        self.__accumulator += int(t * self.__frequency)
+
+        # calculate the waveform D/A output (12-bit DAC)
+        # sawtooth is the top 12 bits of the accumulator
+        sawtooth_level = self.__accumulator >> 12
+
+        # pulse output is the top 12 bits of the accumulator matching the pulsewidth register
+        pulse_level = 4095 if ((self.__accumulator >>12 ) == self.__pulsewidth) else 0
+
+        # triangle output is the top 12 bits, where the low 11 bits of this are inverted by the top bit, then shifted left
+        triangle_invert = 2047 if (self.__accumulator & 8388608) else 0
+        triangle_level = (((self.__accumulator >> 4) ^ triangle_invert) << 1) & 4095
+
+        sawtooth_level = sawtooth_level if self.__sawtooth else 0
+        pulse_level = pulse_level if self.__pulse else 0
+        triangle_level = triangle_level if self.__triangle else 0
+
+        # waveform generator outputs are AND'ed together
+        self.__waveform_level = sawtooth_level & pulse_level & triangle_level
+
+        # update envelope generator
+
+
+
+        # We sub divide the incoming tick interval
+        # to optimize ADSR intervals for faster processing 
+        # which improves performance by a significant factor
+        # t = 28s
+        # t = 1000 = 8.5s
+        et = t
+        ETICK_RESOLUTION = 2000
+        while (et > 0):
+
+            lt = ETICK_RESOLUTION
+            if (lt > et):
+                lt = et
+
+            et -= lt
+
+            adsr_active = self.tick_envelope(lt)
+            if not adsr_active:
+                # ADSR is in a cycle where it is longer needing any updates
+                break
 
 
  
@@ -771,9 +836,14 @@ if __name__ == '__main__':
     #subprocess.check_output(['siddump', '-l'])
 
     with open(src, "r") as fd:
+
+        process_time = timer()        
         sidReader = SidReader(fd)
+        process_time = timer() - process_time
         fd.close()  
+
         
         print("Loaded SID File.")
         print("Output file: '" + dst + "'")
+        print("Conversion took " + str(process_time) + "s")
         sidReader.write_ym( dst )
