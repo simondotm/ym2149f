@@ -35,11 +35,13 @@ from os.path import basename
 from string import Formatter
 from timeit import default_timer as timer
 
-FIXED_LENGTH = 50* 120
+FIXED_LENGTH = 0 #50* 60
 ENABLE_ADSR = True #False
 
 ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
 ENABLE_VERBOSE = False
+
+
 
 # SID
 #
@@ -68,16 +70,26 @@ ENABLE_VERBOSE = False
 # 
 
 # ADSR
-attack_table = [ 2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000]
+#attack_table = [ 2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000]
 
 # 0
 # 1
 # 2
 # 3
 
-SID_CLOCK = 1000000
+# https://codebase64.org/doku.php?id=base:cpu_clocking
+# https://dustlayer.com/c64-architecture/2013/5/7/hardware-basics-part-1-tick-tock-know-your-clock
+
+# 7.88MHz (PAL) respectively 8.18MHz (NTSC)
+#NTSC_CLOCK = 7881984 
+#PAL_CLOCK = 8181816 
+
+SID_NTSC_CLOCK = 1022727 # 14318180 / 14
+SID_PAL_CLOCK = 985248 # 17734475 / 18
+
+SID_CLOCK = SID_PAL_CLOCK # set to SID_NTSC_CLOCK or SID_PAL_CLOCK
 YM_CLOCK = 2000000
-YM_RATE = 50
+YM_RATE = 50 if SID_CLOCK == SID_PAL_CLOCK else 60
 
 # TODO:
 # linear-to-logarithmic volume ramp for YM
@@ -85,6 +97,7 @@ YM_RATE = 50
 # what does TEST do?
 # sampling rate
 # wierd beeps
+# odd tuning
 # support noise
 # waveform sim?
 
@@ -117,6 +130,64 @@ YM_RATE = 50
 # SID internals from Bob Yannes Interview http://sid.kubarth.com/articles/interview_bob_yannes.html
 
 
+class Stats(object):
+
+    def __init__(self):
+        
+        self.total_hz_error = 0.0
+        self.worst_hz_error = 0.0
+        self.total_large_error_tones = 0
+        self.clipped_tones = 0
+        self.total_frames = 0
+        self.max_ym_tone = 0
+        self.min_ym_tone = 65535
+        self.uses_pulse_wave = 0
+        self.uses_triangle_wave = 0
+        self.uses_sawtooth_wave = 0
+        self.uses_noise_wave = 0
+        self.uses_test_bit = 0
+        self.uses_sync_bit = 0
+        self.uses_ringmod_bit = 0
+        self.control_register_updates = 0
+        self.pulsewidth_register_updates = 0
+        self.min_sid_pulsewidth = 65536
+        self.max_sid_pulsewidth = 0
+
+    def report(self):
+        print("")
+        print("----------")
+        print("Statistics")
+        print("----------")
+        print("Total frames: " + str(self.total_frames))
+        print("Total Hz Error is " + str(self.total_hz_error))
+        print("Worst Hz Error is " + str(self.worst_hz_error))
+        print("Total tones with large Hz error: " + str(self.total_large_error_tones))
+        print("Min YM Freq: " + str(self.max_ym_tone) + ", (" + str(get_ym_frequency(self.max_ym_tone)) + "Hz)" )
+        print("Max YM Freq: " + str(self.min_ym_tone) + ", (" + str(get_ym_frequency(self.min_ym_tone)) + "Hz)" )
+        print("Total clipped YM tones (>12-bit): " + str(self.clipped_tones))
+        print("")
+        print("SID Info")
+        print("--------")
+        print("Control register updates: " + str(self.control_register_updates))
+        print("  Triangle wave settings: " + str(self.uses_triangle_wave))
+        print("     Pulse wave settings: " + str(self.uses_pulse_wave))
+        print("  Sawtooth wave settings: " + str(self.uses_sawtooth_wave))
+        print("     Noise wave settings: " + str(self.uses_noise_wave))
+        print("")
+        print("       Sync bit settings: " + str(self.uses_sync_bit))
+        print("       Test bit settings: " + str(self.uses_test_bit))
+        print("    Ringmod bit settings: " + str(self.uses_ringmod_bit))
+        print("")
+        print(" Pulse width reg updates: " + str(self.pulsewidth_register_updates))
+        print("Max Pulse width register: " + str(self.max_sid_pulsewidth))
+        print("Min Pulse width register: " + str(self.min_sid_pulsewidth))
+        print("----------")
+        print("")
+
+# global instance of stats class
+stats = Stats()
+
+
 
 # Taken from: https://github.com/true-grue/ayumi/blob/master/ayumi.c
 # However, it doesn't marry with the YM2149 spec sheet, nor with the anecdotal reports that the YM attentuation steps in -1.5dB increments. Still, I'm gonna run with the emulator version.
@@ -137,6 +208,73 @@ ym_amplitude_table = [
     0.467383840696, 0.53443198291,
     0.635172045472, 0.75800717174,
     0.879926756695, 1.0 ]
+
+### HELPER FUNCTIONS
+### SHOULD PROBABLY PUT THESE IN A CLASS AT SOME POINT
+
+
+#--------------------------------------------------------------
+# return frequency in hz of a given SID tone/noise pitch
+#--------------------------------------------------------------
+def get_sid_frequency(v):
+    # (Fn * FCLK / 16777216)
+    if v < 1:
+        v = 1
+    return float(v) * float(SID_CLOCK) / 16777216.0
+
+#--------------------------------------------------------------
+# return frequency in hz of a given YM tone/noise pitch
+#--------------------------------------------------------------
+def get_ym_frequency(v):
+    if v < 1:
+        v = 1
+    ym_freq = (float(YM_CLOCK) / 16.0) / float(v)
+    return ym_freq
+
+#--------------------------------------------------------------
+# return YM tone from given frequency in hz
+#--------------------------------------------------------------
+def frequency_to_ym_tone(f):
+    #global stats
+    # f = (Clock / 16 x TP)
+    tone = int( round( float(YM_CLOCK) / (float(f) * 16.0) ) )
+
+    stats.max_ym_tone = max([stats.max_ym_tone, tone])
+    stats.min_ym_tone = min([stats.min_ym_tone, tone])
+
+    if (tone < 0):
+        tone = 0
+    if (tone > 4095):
+        tone = 4095
+        stats.clipped_tones += 1
+        print("WARNING: Tone clipped to 4095")
+    return int(tone)
+
+#--------------------------------------------------------------
+# return YM tone from given SID tone
+#--------------------------------------------------------------
+
+def sid_tone_to_ym_tone(v):
+    #global stats # total_hz_error, worst_hz_error
+
+    f = get_sid_frequency(v)
+    if (f < 30.0):
+        print("SID frequency " + str(f) + "hz (tone=" + str(v) + ") too low for YM")
+
+    t = frequency_to_ym_tone(f)
+    yf = get_ym_frequency(t)
+
+    if (v > 0):
+        error = abs(yf - f)
+        stats.total_hz_error += error
+        if error > stats.worst_hz_error:
+            stats.worst_hz_error = error
+        print("SID tone=" + str(v) + ", SID freq=" + str(f) + ", YM tone=" + str(t) + ", YM freq=" + str(yf) + ", (error=" + str(error) + "hz)" )
+        if (error > 1):
+            stats.total_large_error_tones += 1
+            print("WARNING: LARGE ERROR IN FREQUENCY CONVERSION (" + str(error) + "hz)")
+    return t
+
 
 
 # get the normalized linear (float) amplitude for a 5 bit level
@@ -223,8 +361,8 @@ class SidVoice(object):
 
         ### registers
         self.__gate = False
-        self.set_frequency(0, 0)
-        self.set_pulsewidth(0, 0)
+        self.set_frequency(0)#, 0)
+        self.set_pulsewidth(0)#, 0)
         self.set_control(0)
         self.set_envelope(0, 0)
 
@@ -232,14 +370,22 @@ class SidVoice(object):
 
 
     # registers 0,1 - frequency (16-bits)
-    def set_frequency(self, lo, hi):
-        f = lo + (hi * 256)
+    def set_frequency(self, f):# lo, hi):
+        #f = lo + (hi * 256)
         self.__frequency = f
 
+
+    def get_frequency(self):
+        return self.__frequency
+
     # registers 2,3 - pulse width (12-bits)
-    def set_pulsewidth(self, lo, hi):
-        p = lo + (hi * 256)
+    def set_pulsewidth(self, p):#lo, hi):
+        #p = lo + (hi * 256)
         self.__pulsewidth = p
+
+        stats.pulsewidth_register_updates += 1
+        stats.min_sid_pulsewidth = min([self.__pulsewidth, stats.min_sid_pulsewidth])
+        stats.max_sid_pulsewidth = max([self.__pulsewidth, stats.max_sid_pulsewidth])
 
     def voiceId(self):
         return "V" + str(self.__voiceid) + " "
@@ -256,6 +402,20 @@ class SidVoice(object):
     def isSaw(self):
         return self.__sawtooth == True
 
+    def isTest(self):
+        return self.__test == True
+
+    def isSync(self):
+        return self.__sync == True
+
+    def isRingMod(self):
+        return self.__ringmod == True
+
+    def isMute(self):
+        return self.__test or not self.__wave_active
+
+    # TODO:
+    # support mode & filter registers
 
     # register 4 - control (8-bits)
     def set_control(self, c):
@@ -272,6 +432,28 @@ class SidVoice(object):
         self.__ringmod = ((c & 4) == 4)
         self.__sync = ((c & 2) == 2)
         self.__gate = ((c & 1) == 1)
+
+        stats.control_register_updates += 1
+        if self.__pulse:
+            stats.uses_pulse_wave += 1
+        if self.__triangle:
+            stats.uses_triangle_wave += 1
+        if self.__sawtooth:
+            stats.uses_sawtooth_wave += 1
+        if self.__noise:
+            stats.uses_noise_wave += 1
+        if self.__test:
+            stats.uses_test_bit += 1
+        if self.__sync:
+            stats.uses_sync_bit += 1
+        if self.__ringmod:
+            stats.uses_ringmod_bit += 1
+
+        # logic indicator if a waveform is active on this voice
+        self.__wave_active = self.__noise or self.__pulse or self.__triangle or self.__sawtooth
+        if not self.__wave_active:
+            print("NOTE: No waveforms active on voice " + str(self.__voiceid))
+
 
         # handle gate trigger state change
         if self.__gate != last_gate:
@@ -306,9 +488,22 @@ class SidVoice(object):
     # get the current envelope level / amplitude for this voice (0-255)
     def get_envelope_level(self):
         return self.__envelope_level #(self.__envelope_level >> 16) & 255
+        #if self.__noise:
+        #    return 0
+        if self.__test:
+            if self.__envelope_level > 0:
+                print("NOTE: TEST bit set overrode ADSR volume")
+            return 0
+        else:
+            return self.__envelope_level #(self.__envelope_level >> 16) & 255
 
     def get_waveform_level(self):
-        return self.__waveform_level
+        #if self.__noise:
+        #    return 0
+        if self.___test:
+            return 0
+        else:
+            return self.__waveform_level
 
     # advance envelope clock where t is 1/SID_CLOCK
     # returns true if ADSR is active
@@ -351,9 +546,9 @@ class SidVoice(object):
         # see also https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/resid/envelope.cc
 
         precision = (2 ** 31)
-        attack_rate = int(precision / (SidVoice.attack_table[self.__attack] * SID_CLOCK / 1000))
-        decay_rate = int(precision / (SidVoice.decayrelease_table[self.__decay] * SID_CLOCK / 1000))
-        release_rate = int(precision / (SidVoice.decayrelease_table[self.__release] * SID_CLOCK / 1000))
+        attack_rate = int( round( precision / (SidVoice.attack_table[self.__attack] * SID_CLOCK / 1000)))
+        decay_rate = int( round( precision / (SidVoice.decayrelease_table[self.__decay] * SID_CLOCK / 1000)))
+        release_rate = int( round( precision / (SidVoice.decayrelease_table[self.__release] * SID_CLOCK / 1000)))
         sustain_target = SidVoice.sustain_table[self.__sustain] << 24
 
 
@@ -428,7 +623,7 @@ class SidVoice(object):
     # advance clock where t is 1/SID_CLOCK
     def tick(self, t):
 
-        self.__accumulator += int(t * self.__frequency)
+        self.__accumulator += int( round(t * self.__frequency))
 
         # calculate the waveform D/A output (12-bit DAC)
         # sawtooth is the top 12 bits of the accumulator
@@ -455,10 +650,9 @@ class SidVoice(object):
         # We sub divide the incoming tick interval
         # to optimize ADSR intervals for faster processing 
         # which improves performance by a significant factor
-        # t = 28s
-        # t = 1000 = 8.5s
         et = t
-        ETICK_RESOLUTION = 2000
+
+        ETICK_RESOLUTION = SID_CLOCK / 8
         while (et > 0):
 
             lt = ETICK_RESOLUTION
@@ -529,55 +723,6 @@ class SidReader(object):
         # Format
         # | Frame | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | Freq Note/Abs WF ADSR Pul | FCut RC Typ V |
         
-
-        #--------------------------------------------------------------
-        # return frequency in hz of a given SID tone/noise pitch
-        #--------------------------------------------------------------
-        def get_sid_frequency(v):
-            # (Fn * FCLK / 16777216)
-            if v < 1:
-                v = 1
-            return float(v) * float(SID_CLOCK) / 16777216.0
-
-        #--------------------------------------------------------------
-        # return frequency in hz of a given YM tone/noise pitch
-        #--------------------------------------------------------------
-        def get_ym_frequency(v):
-            if v < 1:
-                v = 1
-            ym_freq = (float(YM_CLOCK) / 16.0) / float(v)
-            return ym_freq
-
-        #--------------------------------------------------------------
-        # return YM tone from given frequency in hz
-        #--------------------------------------------------------------
-        def frequency_to_ym_tone(f):
-            # f = (Clock / 16 x TP)
-            tone = int( float(YM_CLOCK) / (float(f) * 16.0) )
-            if (tone < 0):
-                tone = 0
-            if (tone > 4095):
-                tone = 4095
-                print("WARNING: Tone clipped to 4095")
-            return int(tone)
-
-        #--------------------------------------------------------------
-        # return YM tone from given SID tone
-        #--------------------------------------------------------------
-
-        def sid_tone_to_ym_tone(v):
-            f = get_sid_frequency(v)
-            if (f < 30.0):
-                print("SID frequency " + str(f) + "hz (tone=" + str(v) + ") too low for YM")
-
-            t = frequency_to_ym_tone(f)
-            yf = get_ym_frequency(t)
-
-            if (v > 0):
-                print("SID tone=" + str(v) + ", SID freq=" + str(f) + ", YM tone=" + str(t) + ", YM freq=" + str(yf))
-
-
-            return t
 
 
         def parse_voice(channel):
@@ -652,6 +797,20 @@ class SidReader(object):
         #stats["triangle_frames"] = 0
         #stats["noise_frames"]
 
+        print("")
+        print("Processing...")
+        print("")
+
+        middle_c_tone = 0x1168
+        middle_c = get_sid_frequency(middle_c_tone) # should be 261.6Hz
+        print("Middle C is " + str(middle_c) + "(" + str(middle_c_tone) + ")" )
+        if int(middle_c*10.0) != 2616:
+            print("WARNING: SID CLOCK DOES NOT MATCH TUNING") 
+        else:
+            print("SID CLOCK MATCHED OK.")
+        print("SID CLOCK IS " + str(SID_CLOCK))
+        print("YM RATE IS " + str(YM_RATE) + "hz")
+        print("YM CLOCK IS " + str(YM_CLOCK))
 
         # parse the SID register dump
         header = True
@@ -659,6 +818,9 @@ class SidReader(object):
 
             
             if not header:
+
+                stats.total_frames += 1
+
                 # split the frame text into text segments
                 frame = x.split("|")
 
@@ -689,19 +851,35 @@ class SidReader(object):
                 if "wf" in voice3:
                     sid_voice3.set_control( voice3["wf"] )
 
+                # pulse widths
+                if "pul" in voice1:
+                    #sid_voice1.set_pulsewidth( voice1["pul"] >> 8, voice1["pul"] & 255 )
+                    sid_voice1.set_pulsewidth( voice1["pul"] )
+
+                if "pul" in voice2:
+                    #sid_voice2.set_pulsewidth( voice2["pul"] >> 8, voice2["pul"] & 255 )
+                    sid_voice2.set_pulsewidth( voice2["pul"] )
+
+                if "pul" in voice3:
+                    #sid_voice3.set_pulsewidth( voice3["pul"] >> 8, voice3["pul"] & 255 )
+                    sid_voice3.set_pulsewidth( voice3["pul"] )
+
 
                 # tones
-                if "freq" in voice1 and not sid_voice1.isNoise(): 
+                if "freq" in voice1: # and not sid_voice1.isNoise(): 
+                    sid_voice1.set_frequency( voice1["freq"] )
                     tone1 = sid_tone_to_ym_tone( voice1["freq"] )
                     registers[0] = tone1 & 255
                     registers[1] = (tone1 >> 8) & 255
 
-                if "freq" in voice2 and not sid_voice2.isNoise(): 
+                if "freq" in voice2: # and not sid_voice2.isNoise(): 
+                    sid_voice2.set_frequency( voice2["freq"] )
                     tone2 = sid_tone_to_ym_tone( voice2["freq"] )
                     registers[2] = tone2 & 255
                     registers[3] = (tone2 >> 8) & 255
 
-                if "freq" in voice3 and not sid_voice3.isNoise():  
+                if "freq" in voice3: # and not sid_voice3.isNoise():  
+                    sid_voice3.set_frequency( voice3["freq"] )
                     tone3 = sid_tone_to_ym_tone( voice3["freq"] )
                     registers[4] = tone3 & 255
                     registers[5] = (tone3 >> 8) & 255
@@ -716,7 +894,57 @@ class SidReader(object):
                 if "adsr" in voice3:
                     sid_voice3.set_envelope( voice3["adsr"] >> 8, voice3["adsr"] & 255 )
 
-                registers[7] = 8+16+32 # only tones, no noise
+                # select appropriate waveform on YM, noise or square wave
+                ym_mixer_1 = 1 if sid_voice1.isNoise() else 8
+                ym_mixer_2 = 2 if sid_voice2.isNoise() else 16
+                ym_mixer_3 = 4 if sid_voice3.isNoise() else 32
+
+                # TODO: weight average by volume?
+                sid_noise_avg_freq = 0
+                sid_noise_channels_active = 0
+                if sid_voice1.isNoise():
+                    sid_noise_avg_freq += get_sid_frequency( sid_voice1.get_frequency() )
+                    sid_noise_channels_active += 1
+                if sid_voice2.isNoise():
+                    sid_noise_avg_freq += get_sid_frequency( sid_voice2.get_frequency() )
+                    sid_noise_channels_active += 1
+                if sid_voice3.isNoise():
+                    sid_noise_avg_freq += get_sid_frequency( sid_voice3.get_frequency() )
+                    sid_noise_channels_active += 1
+
+
+                if sid_noise_channels_active > 0:
+                    #fn = CLOCK / 16NP
+                    # 16NP * fn = CLOCK
+                    # 16NP = CLOCK / fn
+                    # NP = (CLOCK / fn) / 16
+
+                    sid_noise_avg_freq = sid_noise_avg_freq / sid_noise_channels_active
+                    sid_noise_avg_freq *= 16.0 # hack because SID noise is much lower freq than YM
+                    ym_noise_value = int((YM_CLOCK / sid_noise_avg_freq) / 16.0)
+                    print(str(sid_noise_avg_freq))
+                    print("YM Noise value=" + str(ym_noise_value) + ", from " + str(sid_noise_channels_active) + " active noise voices")
+                    if ym_noise_value > 31:
+                        ym_noise_value = 31
+                        print("YM Noise value CLIPPED to 31")
+                    registers[6] = ym_noise_value
+
+                # TODO: handle noise frequency. Problematic if three voices have different noise frequencies set
+                # since YM has only one noise frequency.
+
+                # override waveform on YM if channels are mute
+                # channels are mute if either test bit set or no waveform output
+                ym_mixer_1 = (1+8) if sid_voice1.isMute() else ym_mixer_1
+                ym_mixer_2 = (2+16) if sid_voice2.isMute() else ym_mixer_2
+                ym_mixer_3 = (4+32) if sid_voice3.isMute() else ym_mixer_3
+
+                # handle test bit as an override on the waveform output
+                #ym_mixer_1 = (1+8) if sid_voice1.isTest() else ym_mixer_1
+                #ym_mixer_2 = (2+16) if sid_voice2.isTest() else ym_mixer_2
+                #ym_mixer_3 = (4+32) if sid_voice3.isTest() else ym_mixer_3
+
+
+                registers[7] = ym_mixer_1 | ym_mixer_2 | ym_mixer_3 #8+16+32 # only tones, no noise
 
 
                 def sid_to_ym_volume(v):
@@ -751,6 +979,9 @@ class SidReader(object):
 
             if ("+-------+" in x):
                 header = False
+
+
+        stats.report()
 
 
 
