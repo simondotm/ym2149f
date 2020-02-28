@@ -433,7 +433,7 @@ class YmEnvelopeFPGA():
 
     def test(self):
         self.reset()
-        print 'default volume - ' + str(self.get_envelope_volume())
+        print('default volume - ' + str(self.get_envelope_volume()))
 
         for m in xrange(16):
             self.reset()
@@ -445,7 +445,7 @@ class YmEnvelopeFPGA():
                 vs += format(v, 'x')
                 self.envelope_cycle()
 
-            print 'output volume M=' + str(format(m, 'x')) + ' - ' + vs
+            print('output volume M=' + str(format(m, 'x')) + ' - ' + vs)
 
 
 			
@@ -580,7 +580,7 @@ class YmEnvelope():
         # set the current envelope volume
         self.__env_volume = self.__env_table[0]
         if ENABLE_DEBUG:
-            print "  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) 
+            print("  ENV: set shape " + str(r) + " hold=" + str(self.__env_hold) + " " + str(self.__env_table) )
 
 
     # set the YM chip envelope frequency registers
@@ -641,7 +641,7 @@ class YmEnvelope():
     # perform a check that the logic is working correctly
     def test(self):
         self.reset()
-        print 'default volume - ' + str(self.get_envelope_volume())
+        print('default volume - ' + str(self.get_envelope_volume()))
 
         for m in xrange(16):
             self.reset()
@@ -653,7 +653,7 @@ class YmEnvelope():
                 vs += format(v, 'x')
                 self.tick(8)
 
-            print 'output volume M=' + str(format(m, 'x')) + ' - ' + vs
+            print('output volume M=' + str(format(m, 'x')) + ' - ' + vs)
 
         #stop
 			
@@ -670,7 +670,7 @@ class YmReader(object):
         self.__ymenv = YmEnvelope()
         #self.__ymenv.test()
 
-        print "Parsing YM file..."
+        print("Parsing YM file...")
 
         self.__fd = fd
         self.__filename = fd.name
@@ -703,13 +703,13 @@ class YmReader(object):
 
         # Parse the YM file format identifier first
         ym_format = self.__fd.read(4)
-        print "YM Format: " + ym_format
+        print("YM Format: " + ym_format)
 
         # we support YM2, YM3, YM5 and YM6
         
         d = {}
         if ym_format == 'YM2!' or ym_format == 'YM3!' or ym_format == 'YM3b':
-            print "Version 2"
+            print("Version 2")
             d['id'] = ym_format
             d['check_string'] = 'LeOnArD!'
             d['nb_frames'] = (self.__filesize-4)/14
@@ -754,25 +754,25 @@ class YmReader(object):
         self.__header = d
 
         if d['interleaved']:
-            print "YM File is Interleaved format"
+            print("YM File is Interleaved format")
 
 
         # read any DD samples
         num_dd = self.__header['nb_digidrums']
         if num_dd != 0:
 
-            print "Music contains " + str(num_dd) + " digi drum samples"
+            print("Music contains " + str(num_dd) + " digi drum samples")
 
             # info
             if d['dd_stformat']:
-                print " Samples are 4-bit ST format" # TODO: what does this mean?!
+                print(" Samples are 4-bit ST format") # TODO: what does this mean?!
             else:
-                print " Samples are UNKNOWN FORMAT" # TODO:so what format is it exactly?! 
+                print(" Samples are UNKNOWN FORMAT") # TODO:so what format is it exactly?! 
 
             if d['dd_signed']:
-                print " Samples are SIGNED"
+                print(" Samples are SIGNED")
             else:
-                print " Samples are UNSIGNED"
+                print(" Samples are UNSIGNED")
 
 
             for i in xrange(num_dd):
@@ -780,7 +780,7 @@ class YmReader(object):
                 #print self.__fd.tell()
                 sample_size = struct.unpack('>I', self.__fd.read(4))[0]   # get sample size
 
-                print "Found DigiDrums sample " + str(i) + ", " + str(sample_size) + " bytes, loading data..."
+                print("Found DigiDrums sample " + str(i) + ", " + str(sample_size) + " bytes, loading data...")
 
                 #print sample_size
                 #print self.__fd.tell()
@@ -825,9 +825,9 @@ class YmReader(object):
 
 
         if ENABLE_DEBUG:
-            print " Loaded " + str(len(regs)) + " register data chunks"
+            print(" Loaded " + str(len(regs)) + " register data chunks")
             for r in xrange( self.__header['nb_registers']):
-                print " Register " + str(r) + " entries = " + str(len(regs[r]))
+                print(" Register " + str(r) + " entries = " + str(len(regs[r])))
 
 
 
@@ -848,14 +848,14 @@ class YmReader(object):
 
     def __check_eof(self):
         if self.__fd.read(4) != 'End!':
-            print '*Warning* End! marker not found after frames'
+            print('*Warning* End! marker not found after frames')
 
 
     def dump_header(self):
         for k in ('id','check_string', 'nb_frames', 'nb_registers', 'song_attributes',
                   'nb_digidrums', 'chip_clock', 'frames_rate', 'loop_frame',
                   'extra_data', 'song_name', 'author_name', 'song_comment'):
-            print "{}: {}".format(k, self.__header[k])
+            print("{}: {}".format(k, self.__header[k]))
 
     def get_header(self):
         return self.__header
@@ -875,13 +875,13 @@ class YmReader(object):
         digi_drums = self.__header['nb_digidrums']
 
 
-        print "Analysing & Converting YM file..."
+        print("Analysing & Converting YM file...")
 
         # prepare the vgm output
         #vgm_filename = "test.vgm"
-        print "   VGM Processing : Writing output VGM file '" + vgm_filename + "'"
+        print("   VGM Processing : Writing output VGM file '" + vgm_filename + "'")
 
-        print "---"
+        print("---")
 
         vgm_stream = bytearray()
         vgm_time = 0
@@ -903,24 +903,24 @@ class YmReader(object):
         sn_pfreq_hi = float(vgm_clock) / (2.0 * float(1) * 16.0 * float(LFSR_BIT))
         sn_pfreq_lo = float(vgm_clock) / (2.0 * float(TONE_RANGE) * 16.0 * float(LFSR_BIT))
 
-        print " YM clock is " + str(clock)
-        print " SN clock is " + str(vgm_clock)
+        print(" YM clock is " + str(clock))
+        print(" SN clock is " + str(vgm_clock))
 
-        print " YM Tone Frequency range from " + str(ym_freq_lo) + "Hz to " + str(ym_freq_hi) + "Hz"
-        print " SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz"
-        print " SN Bass Frequency range from " + str(sn_pfreq_lo) + "Hz to " + str(sn_pfreq_hi) + "Hz"
+        print(" YM Tone Frequency range from " + str(ym_freq_lo) + "Hz to " + str(ym_freq_hi) + "Hz")
+        print(" SN Tone Frequency range from " + str(sn_freq_lo) + "Hz to " + str(sn_freq_hi) + "Hz")
+        print(" SN Bass Frequency range from " + str(sn_pfreq_lo) + "Hz to " + str(sn_pfreq_hi) + "Hz")
 
         if ENABLE_SOFTWARE_BASS:
-            print " + Software Bass is ENABLED"
+            print(" + Software Bass is ENABLED")
         if ENABLE_BASS_TONES:
-            print " + Periodic Noise Bass is ENABLED"
+            print(" + Periodic Noise Bass is ENABLED")
         if ENABLE_ENVELOPES:
-            print " + Envelope Emulation is ENABLED"
+            print(" + Envelope Emulation is ENABLED")
 
         def get_register_data(register, frame):
             return int(binascii.hexlify(regs[register][frame]), 16)
             
-        print "---"
+        print("---")
 
         #print get_register_data(0,0)
         #print get_register_data(1,0)
@@ -1056,14 +1056,14 @@ class YmReader(object):
             # into the top 4 bits
 
             if ym_tone > 4095:
-                print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
+                print(" ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)")
                 ym_tone = ym_tone & 4095
                 
             # If the tone is 0, it's probably because
             # there's a digidrum being played on this voice
             if ym_tone == 0:
                 if ENABLE_VERBOSE:
-                    print " ERROR: ym tone is 0"
+                    print(" ERROR: ym tone is 0")
                 ym_freq = 0
                 target_freq = 0
             else:
@@ -1098,14 +1098,14 @@ class YmReader(object):
                 else:
                     if sn_tone > 1023:
                         sn_tone = 1023
-                        print " WARNING: Clipped SN tone to 1023 (target_freq="+str(target_freq)+" Hz)"
+                        print(" WARNING: Clipped SN tone to 1023 (target_freq="+str(target_freq)+" Hz)")
                         # this could result in bad tuning, depending on why it occurred. better to reduce freq?
 
 
 
                 if sn_tone < 1:
                     sn_tone = 1
-                    print " WARNING: Clipped SN tone to 1 (target_freq="+str(target_freq)+" Hz)"
+                    print(" WARNING: Clipped SN tone to 1 (target_freq="+str(target_freq)+" Hz)")
 
                 sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * sn_freq_scale)
 
@@ -1113,12 +1113,12 @@ class YmReader(object):
                 sp = ""
                 if is_periodic:
                     sp = " (PERIODIC)"
-                print "   ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + ", sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq) + ", transposed " + str(transposed) + " octaves" + sp
+                print("   ym_tone=" + str(ym_tone) + " ym_freq="+str(ym_freq) + ", sn_tone="+str(sn_tone) + " sn_freq="+str(sn_freq) + ", transposed " + str(transposed) + " octaves" + sp)
 
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
                 if ENABLE_VERBOSE:
-                    print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
+                    print(" WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] ")
 
             return sn_tone
 
@@ -1131,14 +1131,14 @@ class YmReader(object):
             # but some YM files encode extra info
             # into the top 4 bits
             if ym_tone > 4095:
-                print " ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)"
+                print(" ERROR: tone data ("+str(ym_tone)+") is out of range (0-4095)")
                 ym_tone = ym_tone & 4095
 
             # If the tone is 0, it's probably because
             # there's a digidrum being played on this voice
             if ym_tone == 0:
                 if ENABLE_VERBOSE:
-                    print " ERROR: ym tone is 0"
+                    print(" ERROR: ym tone is 0")
                 ym_freq = 0
             else:
                 ym_freq = (float(clock) / 16.0) / float(ym_tone)
@@ -1148,7 +1148,7 @@ class YmReader(object):
             while ym_freq < sn_pfreq_lo:
                 ym_freq *= 2.0
                 if ENABLE_VERBOSE:
-                    print " WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz"
+                    print(" WARNING: Freq too low - Added an octave - now " + str(ym_freq) + "Hz")
 
             sn_tone = float(vgm_clock) / (2.0 * ym_freq * 16.0 * float(LFSR_BIT) )
             
@@ -1160,18 +1160,18 @@ class YmReader(object):
                 if sn_tone > 1023:
                     sn_tone >>= 2
                     sn_tone |= 16384 
-                    print " WARNING: Exported bit bass tone in periodic noise ?? (target_freq="+str(target_freq)+" Hz)"
+                    print(" WARNING: Exported bit bass tone in periodic noise ?? (target_freq="+str(target_freq)+" Hz)")
                     # this could result in bad tuning, depending on why it occurred. better to reduce freq?
             else:
                 if sn_tone > 1023:
                     sn_tone = 1023
-                    print " WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)"
+                    print(" WARNING: Clipped SN tone to 1023 (ym_freq="+str(ym_freq)+" Hz)")
 
 
 
             if sn_tone < 1:
                 sn_tone = 1
-                print " WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)"
+                print(" WARNING: Clipped SN tone to 1 (ym_freq="+str(ym_freq)+" Hz)")
 
             sn_freq = float(vgm_clock) / (2.0 * float(sn_tone) * 16.0 * float(LFSR_BIT))
 
@@ -1180,7 +1180,7 @@ class YmReader(object):
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
                 if ENABLE_VERBOSE:
-                    print " WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] "
+                    print(" WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] ")
 
             return sn_tone
 
@@ -1196,11 +1196,11 @@ class YmReader(object):
                 tone_mask = 127
             else: 
                 if tone > 1023:
-                    print " ERROR (output_sn_tone): tone > 1023"
+                    print(" ERROR (output_sn_tone): tone > 1023")
                 tone_mask = 63
 
             if tone < 0:
-                print " ERROR (output_sn_tone): tone < 0"
+                print(" ERROR (output_sn_tone): tone < 0")
 
             r_lo = 128 + (channel << 5) + (tone & 15)    # bit 4 clear for tone
 
@@ -1237,7 +1237,7 @@ class YmReader(object):
             # We would not expect to see tones other than 3 (tuned periodic noise) or 4,5,6 (fixed frequency white noise)
             # so flag if so.
             if (tone != 4) and (tone != 3) and (tone != 5) and (tone != 6):
-                print "WARNING: Detected unusual noise note - " + str(tone)
+                print("WARNING: Detected unusual noise note - " + str(tone))
 
             r_lo = 128 + (3 << 5) + (tone & 15)
 
@@ -1304,17 +1304,17 @@ class YmReader(object):
             if ym_envelope_a or ym_envelope_b or ym_envelope_c:
                 envelope_count += 1
 
-        print " Song analysis over " + str(cnt) + " frames:"
+        print(" Song analysis over " + str(cnt) + " frames:")
         if envelope_count:
-            print " There were " + str(envelope_count) + " frames that used envelopes"
+            print(" There were " + str(envelope_count) + " frames that used envelopes")
         else:
-            print " This tune does not use envelopes."
-        print " "
-        print "  Channel A has " + str(channel_lof_a) + " low frequency tones"
-        print "  Channel B has " + str(channel_lof_b) + " low frequency tones"
-        print "  Channel C has " + str(channel_lof_c) + " low frequency tones"
-        print "  There were " + str(channel_lof_multi2) + " frames where 2 channels were simultaneous low frequency tones"
-        print "  There were " + str(channel_lof_multi3) + " frames where 3 channels were simultaneous low frequency tones"
+            print(" This tune does not use envelopes.")
+        print(" ")
+        print("  Channel A has " + str(channel_lof_a) + " low frequency tones")
+        print("  Channel B has " + str(channel_lof_b) + " low frequency tones")
+        print("  Channel C has " + str(channel_lof_c) + " low frequency tones")
+        print("  There were " + str(channel_lof_multi2) + " frames where 2 channels were simultaneous low frequency tones")
+        print("  There were " + str(channel_lof_multi3) + " frames where 3 channels were simultaneous low frequency tones")
 
         bass_channel_bias = 0 # a
         if channel_lof_b > channel_lof_a and channel_lof_b > channel_lof_c:
@@ -1325,8 +1325,8 @@ class YmReader(object):
         if (FORCE_BASS_CHANNEL >= 0):
             bass_channel_bias = FORCE_BASS_CHANNEL
 
-        print "    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel"
-        print "---"
+        print("    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel")
+        print("---")
 
 
         # Initialise these outside of the main loop so that their state persists across frame
@@ -1356,7 +1356,7 @@ class YmReader(object):
             #------------------------------------------------
 
             if ENABLE_DEBUG:
-                print "--- "		
+                print("--- ")		
 
             #------------------------------------------------
             # extract the YM register values for this frame
@@ -1467,7 +1467,7 @@ class YmReader(object):
 
                 if ts_on:
                     if ENABLE_DEBUG:
-                        print " ERROR: Timer Synth Trigger - Not handled yet"
+                        print(" ERROR: Timer Synth Trigger - Not handled yet")
 
 
                 # timer/sample rate encodings
@@ -1489,11 +1489,11 @@ class YmReader(object):
                 if dd_on:
 
                     if ENABLE_DEBUG:
-                        print "  dd_tp=" + str(dd_tp)
-                        print "  dd_tc=" + str(dd_tc)
+                        print("  dd_tp=" + str(dd_tp))
+                        print("  dd_tc=" + str(dd_tc))
 
                     if dd_tc == 0:
-                        print " ERROR: Digidrum TC value is 0 - unexpected & unhandled"
+                        print(" ERROR: Digidrum TC value is 0 - unexpected & unhandled")
                     else:             
                         dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
 
@@ -1501,7 +1501,7 @@ class YmReader(object):
                 ts_freq = 0
                 if ts_on:
                     if ts_tc == 0:
-                        print " ERROR: Timer Synth TC value is 0 - unexpected & unhandled"
+                        print(" ERROR: Timer Synth TC value is 0 - unexpected & unhandled")
                     else:
                         ts_freq = (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc
 
@@ -1607,7 +1607,7 @@ class YmReader(object):
 
             # output YM frame data before we mess with it.
             if ENABLE_VERBOSE:
-                print s  
+                print(s)  
 
             #---------------------------------------------------
             # Stats
@@ -1668,7 +1668,7 @@ class YmReader(object):
                         noise_active += 1
 
                     if ENABLE_DEBUG:
-                        print "  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise)          
+                        print("  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise))
 
 
 
@@ -1705,7 +1705,7 @@ class YmReader(object):
                     bass_active = True
 
                     if ENABLE_DEBUG:
-                        print "  " + str(lo_count) + " channels detected out of SN frequency range, adjusting..."
+                        print("  " + str(lo_count) + " channels detected out of SN frequency range, adjusting...")
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
@@ -1725,7 +1725,7 @@ class YmReader(object):
 
                     if bass_channel >= 0:
                         if ENABLE_DEBUG:
-                            print " Selected bass channel " + str(bass_channel) + " as the bias due to multiple bass tones"
+                            print(" Selected bass channel " + str(bass_channel) + " as the bias due to multiple bass tones")
                     else:
                         if ym_mix_tone_a and (ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
                             bass_channel = 0
@@ -1736,9 +1736,9 @@ class YmReader(object):
                                 if ym_mix_tone_c and (ym_freq_c <= ym_freq_a and ym_freq_c <= ym_freq_b):
                                     bass_channel = 2
                                 else:
-                                    print " ERROR: no bass channel assigned - should not happen!"
+                                    print(" ERROR: no bass channel assigned - should not happen!")
                                     if ENABLE_DEBUG:
-                                        print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
+                                        print("   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c))
 
 
                     #if (FORCE_BASS_CHANNEL >= 0):
@@ -1748,7 +1748,7 @@ class YmReader(object):
                     if bass_channel == 0:
                         # it's A
                         if ENABLE_DEBUG:
-                            print "  Channel A -> Bass "                     
+                            print("  Channel A -> Bass ")
 
                         channel_map_a = 2
                         channel_map_b = 1
@@ -1764,7 +1764,7 @@ class YmReader(object):
                         if bass_channel == 1:
                             # it's B
                             if ENABLE_DEBUG:
-                                print "  Channel B -> Bass "                     
+                                print("  Channel B -> Bass ")
 
                             channel_map_a = 0
                             channel_map_b = 2
@@ -1777,7 +1777,7 @@ class YmReader(object):
                         else:
                             # it's C  
                             if ENABLE_DEBUG:  
-                                print "  Channel C -> Bass "                     
+                                print("  Channel C -> Bass ")
 
                             channel_map_a = 0
                             channel_map_b = 1
@@ -1803,7 +1803,7 @@ class YmReader(object):
 
                 noise_freq = 0
                 if ym_noise == 0:
-                    print " ERROR: Noise is enabled at frequency 0 - unexpected"
+                    print(" ERROR: Noise is enabled at frequency 0 - unexpected")
                     noise_freq = sn_noise_freq_0
                 else:
                     noise_freq = float(clock) / (16.0 * ym_noise)
@@ -1814,10 +1814,10 @@ class YmReader(object):
                 #snf = float(vgm_clock) / (16.0 * ym_noise)
                 
                 if ENABLE_DEBUG:
-                    print "   noise_freq=" + str(noise_freq) + "Hz"
-                    print "   SN 0 = " + str(sn_noise_freq_0)
-                    print "   SN 1 = " + str(sn_noise_freq_1)
-                    print "   SN 2 = " + str(sn_noise_freq_2)
+                    print("   noise_freq=" + str(noise_freq) + "Hz")
+                    print("   SN 0 = " + str(sn_noise_freq_0))
+                    print("   SN 1 = " + str(sn_noise_freq_1))
+                    print("   SN 2 = " + str(sn_noise_freq_2))
                 
                 # SN internal clock is 1/16 of external clock
                 # white noise on the SN has 4 frequencies
@@ -1841,22 +1841,22 @@ class YmReader(object):
                     min_dist = 1<<31
                     dist = get_freq_dist(noise_freq, sn_noise_freq_0)
                     if ENABLE_DEBUG:
-                        print "dist " + str(dist) + " min_dist " + str(min_dist)
+                        print("dist " + str(dist) + " min_dist " + str(min_dist))
                     if dist < min_dist:
                         if ENABLE_DEBUG:
-                            print " 0 " + str(dist)
+                            print(" 0 " + str(dist))
                         min_dist = dist
                         sn_noise = 0
                     dist = get_freq_dist(noise_freq, sn_noise_freq_1)
                     if dist < min_dist:
                         if ENABLE_DEBUG:
-                            print " 1 " + str(dist)
+                            print(" 1 " + str(dist))
                         min_dist = dist
                         sn_noise = 1
                     dist = get_freq_dist(noise_freq, sn_noise_freq_2)
                     if dist < min_dist:
                         if ENABLE_DEBUG:
-                            print " 2 " + str(dist)
+                            print(" 2 " + str(dist))
                         min_dist = dist
                         sn_noise = 2
                     
@@ -1871,7 +1871,7 @@ class YmReader(object):
                                 sn_noise = 2
 
                 if ENABLE_DEBUG:
-                    print '   sn_noise = ' + str(sn_noise)
+                    print('   sn_noise = ' + str(sn_noise))
 
 
                 sn_tone_out[3] = 4 + sn_noise # bit 2 selects White noise, 0/1/2 are fixed low frequency (16 cycle) (3 is the tuned white noise)
@@ -1882,7 +1882,7 @@ class YmReader(object):
 
             # sanity check. was previously a bug.
             if sn_tone_out[3] == 0:
-                print "WARNING: Noise tone 0 - should not happen!"
+                print("WARNING: Noise tone 0 - should not happen!")
 
 
             #--------------------------------------------------
@@ -1925,7 +1925,7 @@ class YmReader(object):
 
                 if (ym_envelope_shape != 255):
                     if ENABLE_DEBUG:
-                        print '  setting envelope shape ' + format(ym_envelope_shape, '#004b')
+                        print('  setting envelope shape ' + format(ym_envelope_shape, '#004b'))
                     self.__ymenv.set_envelope_shape(ym_envelope_shape)
 
             # Now we sample the volume repeatedly at the rate given. This has the effect of simulating the envelopes at a better resolution.
@@ -1939,14 +1939,14 @@ class YmReader(object):
                     if ym_envelope_a:
                         ym_volume_a = self.__ymenv.get_envelope_volume()
                         if ENABLE_DEBUG:
-                            print '  envelope on A'
+                            print('  envelope on A')
                     if ym_envelope_b:
                         if ENABLE_DEBUG:
-                            print '  envelope on B'
+                            print('  envelope on B')
                         ym_volume_b = self.__ymenv.get_envelope_volume()
                     if ym_envelope_c:
                         if ENABLE_DEBUG:
-                            print '  envelope on C'
+                            print('  envelope on C')
                         ym_volume_c = self.__ymenv.get_envelope_volume()
                 else:
                     # if envelopes are not enabled and we want to simulate envelopes, just use max volume
@@ -2130,18 +2130,18 @@ class YmReader(object):
         #--------------------------------------------
         # Information
         #--------------------------------------------
-        print ""
-        print "Info:"
-        print "         Num Frames - " + str(self.__header['nb_frames'])
-        print " Channel A Hz range - " + str( get_ym_frequency(ym_tone_a_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_a_min) ) + "Hz"
-        print " Channel B Hz range - " + str( get_ym_frequency(ym_tone_b_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_b_min) ) + "Hz"
-        print " Channel C Hz range - " + str( get_ym_frequency(ym_tone_c_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_c_min) ) + "Hz"
-        print "      Num Digidrums - " + str(self.__header['nb_digidrums'])
-        print "  Digidrum Hz range - " + str( ym_dd_freq_min ) + "Hz to " + str( ym_dd_freq_max ) + "Hz"
-        print "   Enveloped Frames - " + str( ym_env_count ) + " (" + str( ym_env_count*100.0/self.__header['nb_frames'] ) + "%)"
+        print("")
+        print("Info:")
+        print("         Num Frames - " + str(self.__header['nb_frames']))
+        print(" Channel A Hz range - " + str( get_ym_frequency(ym_tone_a_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_a_min) ) + "Hz")
+        print(" Channel B Hz range - " + str( get_ym_frequency(ym_tone_b_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_b_min) ) + "Hz")
+        print(" Channel C Hz range - " + str( get_ym_frequency(ym_tone_c_max) ) + "Hz to " + str( get_ym_frequency(ym_tone_c_min) ) + "Hz")
+        print("      Num Digidrums - " + str(self.__header['nb_digidrums']))
+        print("  Digidrum Hz range - " + str( ym_dd_freq_min ) + "Hz to " + str( ym_dd_freq_max ) + "Hz")
+        print("   Enveloped Frames - " + str( ym_env_count ) + " (" + str( ym_env_count*100.0/self.__header['nb_frames'] ) + "%)")
 
-        print "  Envelope Hz range - " + str( ym_env_freq_min ) + "Hz to " + str( ym_env_freq_max ) + "Hz"
-        print "        Noise range - " + str( ym_noise_min ) + " to " + str( ym_noise_max ) + " "
+        print("  Envelope Hz range - " + str( ym_env_freq_min ) + "Hz to " + str( ym_env_freq_max ) + "Hz")
+        print("        Noise range - " + str( ym_noise_min ) + " to " + str( ym_noise_max ) + " ")
 
 
         #--------------------------------------------
@@ -2189,7 +2189,7 @@ class YmReader(object):
             gd3_offset = (64-20) + vgm_stream_length
             gd3_stream_length = len(gd3_stream)
         else:
-            print "   VGM Processing : GD3 tag was stripped"
+            print("   VGM Processing : GD3 tag was stripped")
         
         # build the full VGM output stream		
         vgm_data = bytearray()
@@ -2224,7 +2224,7 @@ class YmReader(object):
         vgm_file.write(vgm_data)
         vgm_file.close()
         
-        print "   VGM Processing : Written " + str(int(len(vgm_data))) + " bytes, GD3 tag used " + str(gd3_stream_length) + " bytes"
+        print("   VGM Processing : Written " + str(int(len(vgm_data))) + " bytes, GD3 tag used " + str(gd3_stream_length) + " bytes")
 
         if ENABLE_BIN:
             # write an example SN data BIN format output file
@@ -2251,7 +2251,7 @@ class YmReader(object):
             # unpack remaining data
             # or 256 x 11 = 2816 bytes, 1 page per register = 256
 
-            print "   BIN Processing : Written " + str(int(len(raw_stream))) + " bytes"
+            print("   BIN Processing : Written " + str(int(len(raw_stream))) + " bytes")
 
 
         # write a binary file out for the Arduino project, containing raw YM & SN register data
@@ -2262,16 +2262,16 @@ class YmReader(object):
             play_rate = self.__header['frames_rate']
             packet_count = self.__header['nb_frames']
             # emit the play rate & packet count          
-            print "play rate is " + str(play_rate)
+            print("play rate is " + str(play_rate))
             header_block.append(struct.pack('B', play_rate & 0xff))
             header_block.append(struct.pack('B', packet_count & 0xff))		
             header_block.append(struct.pack('B', (packet_count >> 8) & 0xff))	
 
-            print "    Num packets " + str(packet_count)
+            print("    Num packets " + str(packet_count))
             duration = packet_count / play_rate
             duration_mm = int(duration / 60.0)
             duration_ss = int(duration % 60.0)
-            print "    Song duration " + str(duration) + " seconds, " + str(duration_mm) + "m" + str(duration_ss) + "s"
+            print("    Song duration " + str(duration) + " seconds, " + str(duration_mm) + "m" + str(duration_ss) + "s")
             header_block.append(struct.pack('B', duration_mm))	# minutes		
             header_block.append(struct.pack('B', duration_ss))	# seconds
 
@@ -2304,8 +2304,8 @@ class YmReader(object):
             output_block.append(struct.pack('B', 0))				# zero terminator
 
             # now send the raw data
-            print packet_count
-            print len(raw_stream)/11
+            print(packet_count)
+            print(len(raw_stream)/11)
 
             for c in xrange(packet_count):
                 # SN data first
@@ -2319,9 +2319,9 @@ class YmReader(object):
             fh.write(output_block)
             fh.close()
 
-            print "   ARDUINO BIN Processing : Written " + str(int(len(output_block))) + " bytes"            
+            print("   ARDUINO BIN Processing : Written " + str(int(len(output_block))) + " bytes")
 
-        print "All done."                          
+        print("All done.")
 
 
 def to_minsec(frames, frames_rate):
@@ -2372,7 +2372,7 @@ if __name__ == '__main__':
     if dst == None:
         dst = os.path.splitext(src)[0] + ".vgm"
 
-    print "output file=" + dst
+    print("output file=" + dst)
 
     # check for missing files
     if not os.path.isfile(src):
@@ -2420,7 +2420,7 @@ if __name__ == '__main__':
     ym_filename = src
 
     if args.loops:
-        print "Exporting loop intro..."
+        print("Exporting loop intro...")
         YmReader.OUTPUT_LOOP_INTRO = True
 
     with open(ym_filename, "rb") as fd:
@@ -2432,19 +2432,19 @@ if __name__ == '__main__':
         data = ym.get_data()
             
 
-        print "Loaded YM File."
+        print("Loaded YM File.")
 
         vgm_filename = dst[:dst.rfind('.')]
         if YmReader.OUTPUT_LOOP_INTRO:
             vgm_filename += ".intro"
 
         vgm_filename += ".vgm"
-        print "Output file: '" + vgm_filename + "'"
+        print("Output file: '" + vgm_filename + "'")
         ym.write_vgm( vgm_filename )
 
     # export the looping section
     if args.loops:
-        print "Exporting loop section..."
+        print("Exporting loop section...")
 
         YmReader.OUTPUT_LOOP_INTRO = False
         YmReader.OUTPUT_LOOP_SECTION = True
@@ -2457,9 +2457,9 @@ if __name__ == '__main__':
             data = ym.get_data()
                 
 
-            print "Loaded YM File."
+            print("Loaded YM File.")
             vgm_filename = ym_filename[:ym_filename.rfind('.')] + ".loop.vgm"
-            print vgm_filename
+            print(vgm_filename)
             ym.write_vgm( vgm_filename )
 
 
@@ -2467,7 +2467,7 @@ if __name__ == '__main__':
 
 
     song_min, song_sec = to_minsec(header['nb_frames'], header['frames_rate'])
-    print ""
+    print("")
     #print data
 
     if False:
