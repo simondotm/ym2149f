@@ -32,6 +32,8 @@ import time
 import binascii
 import math
 import os
+from os.path import basename
+
 
 # Command line can override these defaults
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
@@ -47,6 +49,8 @@ FILTER_CHANNEL_N = False    # Noise channel
 
 ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
 ENABLE_VERBOSE = False
+
+ARDUINO_BIN = False
 
 
 # Runtime options (not command line options)
@@ -76,7 +80,7 @@ ENABLE_BIN = False          # enable output of a test 'bin' file (ie. the raw SN
 # Periodic noise based bass settings (default)
 ENABLE_BASS_TONES = True    # enables low frequency tones to be simulated with periodic noise
 ENABLE_BASS_BIAS = True     # enables bias to the most active bass channel when more than one low frequency tone is playing at once.
-FORCE_BASS_CHANNEL = -1     # set this to 0,1 or 2 (A/B/C) or -1, to make a specific channel always take the bass frequency. Not an elegant or useful approach.
+FORCE_BASS_CHANNEL = -1 #-1     # set this to 0,1 or 2 (A/B/C) or -1, to make a specific channel always take the bass frequency. Not an elegant or useful approach.
 
 
 # Software bass settings (overrides periodic noise bass)
@@ -1222,8 +1226,8 @@ class YmReader(object):
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
             vgm_stream.extend( struct.pack('B', r_hi) ) # DATA TONE
 
-            raw_stream.extend( struct.pack('B', (tone & 15)) )
-            raw_stream.extend( struct.pack('B', (tone >> 4) & tone_mask) )
+            raw_stream.extend( struct.pack('B', r_lo) )
+            raw_stream.extend( struct.pack('B', r_hi) )
 
         #--------------------------------------------------------------
         # output a noise tone on channel 3
@@ -1240,7 +1244,7 @@ class YmReader(object):
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
             vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
 
-            raw_stream.extend( struct.pack('B', (tone & 15)) ) # LATCH TONE
+            raw_stream.extend( struct.pack('B', r_lo) ) # LATCH TONE
         
 
         #--------------------------------------------------------------
@@ -1253,7 +1257,7 @@ class YmReader(object):
             vgm_stream.extend( struct.pack('B', 0x50) ) # COMMAND
             vgm_stream.extend( struct.pack('B', r_lo) ) # LATCH VOLUME
 
-            raw_stream.extend( struct.pack('B', (15 - (volume & 15))) ) # LATCH VOLUME
+            raw_stream.extend( struct.pack('B', r_lo) ) # LATCH VOLUME
 
         #--------------------------------------------------------------
         # YM stream pre-processing code
@@ -1317,6 +1321,9 @@ class YmReader(object):
             bass_channel_bias = 1 # b
         if channel_lof_c > channel_lof_a and channel_lof_c > channel_lof_b:
             bass_channel_bias = 2 # b
+
+        if (FORCE_BASS_CHANNEL >= 0):
+            bass_channel_bias = FORCE_BASS_CHANNEL
 
         print "    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel"
         print "---"
@@ -1734,8 +1741,8 @@ class YmReader(object):
                                         print "   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c)
 
 
-                    if (FORCE_BASS_CHANNEL >= 0):
-                        bass_channel = FORCE_BASS_CHANNEL
+                    #if (FORCE_BASS_CHANNEL >= 0):
+                    #    bass_channel = FORCE_BASS_CHANNEL
                     
                     # Swap channels according to bass preference
                     if bass_channel == 0:
@@ -2079,25 +2086,17 @@ class YmReader(object):
                         output_sn_volume(3, sn_attn_latch[3])
 
                 else:                
+                    # otherwise output ALL register writes
+                    # decoder must delta check for changes in tone3 (noise) to ensure LFSR isn't always reset otherwise artifacts will appear
                     output_sn_tone(0, sn_tone_out[0])
-                    output_sn_tone(1, sn_tone_out[0])
-                    output_sn_tone(2, sn_tone_out[0])
+                    output_sn_tone(1, sn_tone_out[1])
+                    output_sn_tone(2, sn_tone_out[2])
                     output_sn_noise(sn_tone_out[3])
 
                     output_sn_volume(0, sn_attn_out[0])
                     output_sn_volume(1, sn_attn_out[1])
                     output_sn_volume(2, sn_attn_out[2])
                     output_sn_volume(3, sn_attn_out[3])
-
-                    #output_sn_volume(3, 15)
-                    #output_sn_volume(3, 15)
-                    #output_sn_volume(3, 15)
-                    #output_sn_volume(3, 15)
-                    #output_sn_volume(3, 15)
-
-
-
-
 
                 # now output to vgm
                 # so, for a higher res output we could output the volume here.
@@ -2231,7 +2230,7 @@ class YmReader(object):
             # write an example SN data BIN format output file
             frame_size = 11 #16
             frame_total = len(raw_stream) / frame_size
-            fh = open(vgm_filename+".bin", 'wb')
+            fh = open(  vgm_filename.rsplit( ".", 1 )[ 0 ] +".bin", 'wb')
     #        fh.write(raw_stream)
 
             frame_count = frame_total #16 # frame_total #33 # number of frames to package at a time
@@ -2253,6 +2252,74 @@ class YmReader(object):
             # or 256 x 11 = 2816 bytes, 1 page per register = 256
 
             print "   BIN Processing : Written " + str(int(len(raw_stream))) + " bytes"
+
+
+        # write a binary file out for the Arduino project, containing raw YM & SN register data
+        if ARDUINO_BIN:
+
+
+            header_block = bytearray()
+            play_rate = self.__header['frames_rate']
+            packet_count = self.__header['nb_frames']
+            # emit the play rate & packet count          
+            print "play rate is " + str(play_rate)
+            header_block.append(struct.pack('B', play_rate & 0xff))
+            header_block.append(struct.pack('B', packet_count & 0xff))		
+            header_block.append(struct.pack('B', (packet_count >> 8) & 0xff))	
+
+            print "    Num packets " + str(packet_count)
+            duration = packet_count / play_rate
+            duration_mm = int(duration / 60.0)
+            duration_ss = int(duration % 60.0)
+            print "    Song duration " + str(duration) + " seconds, " + str(duration_mm) + "m" + str(duration_ss) + "s"
+            header_block.append(struct.pack('B', duration_mm))	# minutes		
+            header_block.append(struct.pack('B', duration_ss))	# seconds
+
+            # output the final byte stream
+            output_block = bytearray()	
+
+            # send header
+            output_block.append(struct.pack('B', len(header_block)))
+            output_block.extend(header_block)
+
+            # send title
+            title = self.__header['song_name']
+            if len(title) > 254:
+                title = title[:254]
+            output_block.append(struct.pack('B', len(title) + 1))	# title string length
+            output_block.extend(title)
+            output_block.append(struct.pack('B', 0))				# zero terminator
+
+            # send author
+            author = self.__header['author_name']
+
+            # use filename if no author listed
+            if len(author) == 0:
+                author = basename(vgm_filename)
+
+            if len(author) > 254:
+                author = author[:254]
+            output_block.append(struct.pack('B', len(author) + 1))	# author string length
+            output_block.extend(author)
+            output_block.append(struct.pack('B', 0))				# zero terminator
+
+            # now send the raw data
+            print packet_count
+            print len(raw_stream)/11
+
+            for c in xrange(packet_count):
+                # SN data first
+                for r in xrange(11):
+                    output_block.append(raw_stream[c*11 + r])
+                # YM data next
+                for r in xrange(14):
+                    output_block.append(regs[r][c])
+    
+            fh = open( vgm_filename.rsplit( ".", 1 )[ 0 ] + ".bin", 'wb')
+            fh.write(output_block)
+            fh.close()
+
+            print "   ARDUINO BIN Processing : Written " + str(int(len(output_block))) + " bytes"            
 
         print "All done."                          
 
@@ -2291,9 +2358,10 @@ if __name__ == '__main__':
     parser.add_argument("-r", "--rate", type=int, default=50, metavar="<n>", help="Set envelope sample rate to <n> Hz (must be divisble by 50!), default: 50Hz")
     parser.add_argument("-f", "--filter", default='', metavar="<s>", help="Filter channels A,B,C,N <s> is a string, eg. -f AB")
     parser.add_argument("-b", "--bass", help="Enable software bass (output VGM will not be hardware compliant for bass tones)", default=False, action="store_true")
-    parser.add_argument("-a", "--attenuation", help="Force SN76489 attentuation mapping (volumes scaled from YM dB to SN dB) [Experimental]", default=False, action="store_true")
+    parser.add_argument("-t", "--attenuation", help="Force SN76489 attentuation mapping (volumes scaled from YM dB to SN dB) [Experimental]", default=False, action="store_true")
     parser.add_argument("-n", "--noenvelopes", help="Disable envelope simulation", default=False, action="store_true")
     parser.add_argument("-l", "--loops", help="Export two VGM files, one for intro and one for looping section", default=False, action="store_true")
+    parser.add_argument("-a", "--arduino", help="Export Arduino BIN file", default=False, action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable verbose mode", action="store_true")
     parser.add_argument("-d", "--debug", help="Enable debug mode", action="store_true")
     args = parser.parse_args()
@@ -2301,10 +2369,10 @@ if __name__ == '__main__':
 
     src = args.input
     dst = args.output
-    print "output file=" + dst
     if dst == None:
         dst = os.path.splitext(src)[0] + ".vgm"
 
+    print "output file=" + dst
 
     # check for missing files
     if not os.path.isfile(src):
@@ -2317,6 +2385,11 @@ if __name__ == '__main__':
     SN_CLOCK = int(args.clock * 1000000.0)
     LFSR_BIT = args.shift
     ENABLE_ATTENUATION = args.attenuation
+
+    # check for Arduino output mode
+    if args.arduino:
+        ARDUINO_BIN = True
+        OPTIMIZE_VGM = False # we have to turn off the VGM optimization otherwise not all SN register is output.
 
     if (args.noenvelopes):
         ENABLE_ENVELOPES = False
