@@ -40,7 +40,7 @@ SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
 
 ENABLE_ENVELOPES = True     # enable this to simulate envelopes in the output
-ENABLE_ATTENUATION = False  # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
+ENABLE_ATTENUATION = True  # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
 
 FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
@@ -176,6 +176,15 @@ else:
 
 
 # Setup attenuation mapping tables
+
+
+# SN attenuates in steps of 2dB, whereas YM steps in 1.5dB steps, so find the nearest volume in this table.
+# Not sure this is ideal, because without envelopes, some tunes only use the 4 bit levels, and they dont use all 16-levels of the output SN
+# but technically is a better representation? hmm.... revist
+# from https://www.smspower.org/Development/SN76489
+sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 10362, 13045, 16422, 20675, 26028, 32767 ]
+
+
 # When we average volumes (eg. for noise mixing or envelope sampling) we cant just average the linear value because they represent logarithmic attenuation
 # So we use tables to convert between the logarithmic attenuation and the linear output
 # YM Attentuation at normalized 1V amplitude according to the datasheet is -0.75 dB per step for 5-bit envelopes and -1.5 dB per step for the 4-bit fixed levels
@@ -185,8 +194,9 @@ else:
 #sn_amplitude_table = [ 4096, 3254, 2584, 2053, 1631, 1295, 1029, 817, 649, 516, 410, 325, 258, 205, 163, 0 ]
 
 # Taken from: https://github.com/true-grue/ayumi/blob/master/ayumi.c
-# However, it doesn't marry with the YM2149 spec sheet, nor with the anecdotal reports that the YM attentuation steps in -1.5dB increments. Still, I'm gonna run with the emulator version.
-ym_amplitude_table = [
+# However, it doesn't marry with the YM2149 spec sheet, nor with the anecdotal reports that the YM attentuation steps in -1.5dB increments. 
+# So, I'm gonna run with the datasheet version.
+YM_AMPLITUDE_TABLE_EMU = [
     0.0, 0.0,
     0.00465400167849, 0.00772106507973,
     0.0109559777218, 0.0139620050355,
@@ -204,10 +214,33 @@ ym_amplitude_table = [
     0.635172045472, 0.75800717174,
     0.879926756695, 1.0 ]
 
+# calculate datasheet spec YM amplitude table from logs
+YM_AMPLITUDE_TABLE_DS = []
+for v in range(32):
+    if v == 0:
+        a = 0.0
+    else:
+        a = math.pow(10, ((-0.75*(31-v))/10) )
+    #print " Amplitude of volume " + str(v) + " is " + str(a)
+    a = min(1.0, a)
+    a = max(0.0, a)
+    YM_AMPLITUDE_TABLE_DS.append( a )
+
+
+# use the datasheet table for YM amplitudes
+ym_amplitude_table = YM_AMPLITUDE_TABLE_DS
+
+
+
+
+
+
+# Define if we'll use table based mapping for YM amplitude calcs, or Logarithmic mapping
+USE_YM_AMPLITUDE_TABLE = True
 
 # get the normalized linear (float) amplitude for a 5 bit level
 def get_ym_amplitude(v):
-    if True:
+    if USE_YM_AMPLITUDE_TABLE:
         return ym_amplitude_table[v]
     else:
         if v == 0:
@@ -221,7 +254,7 @@ def get_ym_amplitude(v):
 
 # given an amplitude, return the nearest 5-bit volume level
 def get_ym_volume(a):
-    if True:
+    if USE_YM_AMPLITUDE_TABLE:
         dist = 1<<31
         index = 0
         for n in range(32):
@@ -240,11 +273,69 @@ def get_ym_volume(a):
         else:
             v = int( 31 - ( (10*math.log(a, 10)) / -0.75 ) )
         #print "  Volume of amplitude " + str(a) + " is " + str(v)
-        #if v > 31:
-        #    print "TITS"
+        if v > 31:
+            print("RANGE ERROR > 5 bits in get_ym_volume()")
         v = min(31, v)
         v = max(0, v)
         return v      
+
+
+
+
+# table to map ym volumes from 5-bit to 4-bit SN volumes
+ym_sn_volume_table = []
+for n in range(32):
+    a = int(get_ym_amplitude(n) * 32767.0)
+    dist = 1<<31
+    index = 0
+    for i in range(16):
+        l = sn_volume_table[i]
+        p = a - l
+        d = p * p
+        # we always round to the nearest louder level (so we are never quieter than target level)
+        if d < dist and l >= a:
+            dist = d
+            index = i
+
+    ym_sn_volume_table.append(index)
+
+print(ym_sn_volume_table)
+
+
+# get the nearest 4-bit logarithmic volume to the given 5-bit ym_volume
+def get_sn_volume(ym_volume):
+    if ym_volume > 31:
+        print("RANGE ERROR > 5 bits in get_sn_volume()")
+    if ENABLE_ATTENUATION:
+        # use lookup table
+        return ym_sn_volume_table[ym_volume]
+    else:
+        # simple attentuation map
+        return (ym_volume >> 1) & 15
+
+
+
+
+# print the tables
+if True:
+    #def get_ym_amplitude2(v):
+    #    if v == 0:
+    #        a = 0.0
+    #    else:
+    #        a = math.pow(10, ((-0.75*(31-v))/10) )
+    #    #print " Amplitude of volume " + str(v) + " is " + str(a)
+    #    a = min(1.0, a)
+    #    a = max(0.0, a)
+    #    return a
+
+    #ym_amplitude_table2 = []
+    #for n in range(32):
+    #    ym_amplitude_table2.append( get_ym_amplitude2(n) )
+
+    print("{: >2} {: >20} {: >20} {: >20}".format("level", "ymtable_emu", "logtable_datasheet", "sntable"))
+    for n in range(32):
+        print("{: >2} {: >20} {: >20} {: >20}".format(n, YM_AMPLITUDE_TABLE_EMU[n], YM_AMPLITUDE_TABLE_DS[n], sn_volume_table[n>>1]/32767.0))
+
 
 
 
@@ -934,6 +1025,8 @@ class YmReader(object):
             print(" + Periodic Noise Bass is ENABLED")
         if ENABLE_ENVELOPES:
             print(" + Envelope Emulation is ENABLED")
+        if ENABLE_ATTENUATION:
+            print(" + Volume Attenuation is ENABLED")
 
         def get_register_data(register, frame):
             return int(binascii.hexlify(regs[register][frame]), 16)
@@ -991,44 +1084,9 @@ class YmReader(object):
 
 
 
-  
-        
-        
-        # SN attenuates in steps of 2dB, whereas YM steps in 1.5dB steps, so find the nearest volume in this table.
-        # Not sure this is ideal, because without envelopes, some tunes only use the 4 bit levels, and they dont use all 16-levels of the output SN
-        # but technically is a better representation? hmm.... revist
-        sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 10362, 13045, 16422, 20675, 26028, 32767 ]
-        ym_sn_volume_table = []
-        for n in range(32):
-            a = int(get_ym_amplitude(n) * 32767.0)
-            dist = 1<<31
-            index = 0
-            for i in range(16):
-                l = sn_volume_table[i]
-                p = a - l
-                d = p * p
-                # we always round to the nearest louder level (so we are never quieter than target level)
-                if d < dist and l >= a:
-                    dist = d
-                    index = i
-
-            ym_sn_volume_table.append(index)
-
-#        print ym_sn_volume_table        
-
-        # Helper functions
-
-
-        # get the nearest 4-bit logarithmic volume to the given 5-bit ym_volume
-        def get_sn_volume(ym_volume):
-            if ENABLE_ATTENUATION:
-                # this could be a pure lookup table
-                return ym_sn_volume_table[ym_volume]
-            else:
-                # simple attentuation map
-                return (ym_volume >> 1) & 15
                         
 
+        # Helper functions
         def get_register_byte(r):
             # some tunes have incorrect data stream lengths, handle that here.
             if r < len(regs) and i < self.__header['nb_frames'] and i < len(regs[r]) :
@@ -1136,7 +1194,7 @@ class YmReader(object):
             hz_err = sn_freq - ym_freq
             if hz_err > 2.0 or hz_err < -2.0:
                 if ENABLE_VERBOSE:
-                    print(" WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ] ")
+                    print(" WARNING: Large error transposing tone! [" + str(hz_err) + " Hz ], Periodic=" + str(is_periodic))
 
             return sn_tone
 
@@ -1360,12 +1418,14 @@ class YmReader(object):
             secs = int(i / frame_rate)
             mins = int(secs / 60)
             secs = secs % 60
+            cycle = int(i % frame_rate)
 
             s = "Frame="
             s += '{:05d}'.format(i)+" "
             s += "("
             s += '{:02d}'.format(mins)+":"
-            s += '{:02d}'.format(secs)+")"
+            s += '{:02d}'.format(secs)+"."
+            s += '{:02d}'.format(cycle)+")"
 
 
 
@@ -1381,15 +1441,19 @@ class YmReader(object):
             #------------------------------------------------
 
             # volume attenuation level (if bit 4 is clear)
-            # we convert to 5-bits so we're always working in higher precision
+            # we convert the 4-bit value to 5-bits so we're always working in higher precision
             ym_volume_a = (get_register_byte(8) & 15) << 1 
             ym_volume_b = (get_register_byte(9) & 15) << 1
             ym_volume_c = (get_register_byte(10) & 15) << 1
 
             # ensure the new 5-bit value occupies the full 5-bit range (0-31 instead of 0-30) by OR'ing bit 1 to bit 0
+            # by duplicating the least significant bit
             ym_volume_a |= (ym_volume_a >> 1 & 1)
             ym_volume_b |= (ym_volume_b >> 1 & 1)
             ym_volume_c |= (ym_volume_c >> 1 & 1)
+
+
+
 
             # envelope attentuation mode flags
             ym_envelope_a = get_register_byte( 8) & 16
@@ -1513,7 +1577,7 @@ class YmReader(object):
                     if dd_tc == 0:
                         print(" ERROR: Digidrum TC value is 0 - unexpected & unhandled")
                     else:             
-                        dd_freq = (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc
+                        dd_freq = int( (MFP_FREQ / MFP_TABLE[dd_tp]) / dd_tc )
 
                 # Handle TS frequency
                 ts_freq = 0
@@ -1521,7 +1585,7 @@ class YmReader(object):
                     if ts_tc == 0:
                         print(" ERROR: Timer Synth TC value is 0 - unexpected & unhandled")
                     else:
-                        ts_freq = (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc
+                        ts_freq = int( (MFP_FREQ / MFP_TABLE[ts_tp]) / ts_tc )
 
                 # If a DD is triggered on a voice, the volume register for that channel
                 # should be interpreted as a 5-bit sample number rather than a volume
@@ -1659,15 +1723,11 @@ class YmReader(object):
 
 
             # load the current tones & volumes
+            # ym_volumes are 5 bit, so we must map to 4 bits.
             sn_attn_out[0] = ym_volume_a >> 1
             sn_attn_out[1] = ym_volume_b >> 1
             sn_attn_out[2] = ym_volume_c >> 1
             sn_attn_out[3] = 0
-
-            # tones get written anyway, if there's some low frequency tones detected, they'll get modded
-            sn_tone_out[0] = ym_to_sn(ym_tone_a)
-            sn_tone_out[1] = ym_to_sn(ym_tone_b)
-            sn_tone_out[2] = ym_to_sn(ym_tone_c)
 
             #--------------------------------------------------
             # Process noise mixers
@@ -1706,24 +1766,31 @@ class YmReader(object):
             # processing so that theres continuity of the bass effect (otherwise when we switch to a noise sound, channel 2 would become audible, but at a higher frequency)
             bass_active = False
             bass_channel = 0 # the channel that bass is active on (0=a 1=b 2=c)
+            tone_sent = False
 
-            if ENABLE_BASS_TONES and not noise_active:
+            lo_count = 0
+            if ENABLE_BASS_TONES:
 
-                lo_count = 0
                 if ym_mix_tone_a and (ym_freq_a < sn_freq_lo):
                     lo_count += 1
                 if ym_mix_tone_b and (ym_freq_b < sn_freq_lo):
                     lo_count += 1
                 if ym_mix_tone_c and (ym_freq_c < sn_freq_lo):
                     lo_count += 1
-                    
+
+                if ENABLE_DEBUG:
+                    print("  " + str(lo_count) + " channels detected out of SN frequency range, adjusting...")
+                    if noise_active:
+                        print("  - Bass tone disabled because noise is active, bass may be transposed.")
+
+
+
+            if ENABLE_BASS_TONES and not noise_active:
                 # if at least one channel is an out of range frequency
                 # adjust for periodic noise bass
                 if lo_count:
                     bass_active = True
 
-                    if ENABLE_DEBUG:
-                        print("  " + str(lo_count) + " channels detected out of SN frequency range, adjusting...")
 
                     # Find the channel with the lowest frequency
                     # And move it over to SN Periodic noise channel instead
@@ -1734,27 +1801,31 @@ class YmReader(object):
                     if ENABLE_BASS_BIAS and (lo_count > 1):
                         # we know the mix is active since lo_count only includes channels with mix on.
                         # so double check the selected bias channel is currently one of the actives bass frequencies and force that channel to be bass
-                        if bass_channel_bias == 0 and (ym_freq_a < sn_freq_lo):
+                        if ym_mix_tone_a and bass_channel_bias == 0 and (ym_freq_a < sn_freq_lo):
                             bass_channel = bass_channel_bias
-                        if bass_channel_bias == 1 and (ym_freq_b < sn_freq_lo):
+                        if ym_mix_tone_b and bass_channel_bias == 1 and (ym_freq_b < sn_freq_lo):
                             bass_channel = bass_channel_bias
-                        if bass_channel_bias == 2 and (ym_freq_c < sn_freq_lo):
+                        if ym_mix_tone_c and bass_channel_bias == 2 and (ym_freq_c < sn_freq_lo):
                             bass_channel = bass_channel_bias
 
                     if bass_channel >= 0:
                         if ENABLE_DEBUG:
                             print(" Selected bass channel " + str(bass_channel) + " as the bias due to multiple bass tones")
                     else:
-                        if ym_mix_tone_a and (ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
+                        # only one channel is low frequency, find it.
+                        # pick the bass channel
+                        if ym_mix_tone_a and (ym_freq_a < sn_freq_lo): #(ym_freq_a <= ym_freq_b and ym_freq_a <= ym_freq_c):
                             bass_channel = 0
                         else:
-                            if ym_mix_tone_b and (ym_freq_b <= ym_freq_a and ym_freq_b <= ym_freq_c):
+                            if ym_mix_tone_b and (ym_freq_b < sn_freq_lo): #(ym_freq_b <= ym_freq_a and ym_freq_b <= ym_freq_c):
                                 bass_channel = 1
                             else:
-                                if ym_mix_tone_c and (ym_freq_c <= ym_freq_a and ym_freq_c <= ym_freq_b):
+                                if ym_mix_tone_c and (ym_freq_c < sn_freq_lo): #(ym_freq_c <= ym_freq_a and ym_freq_c <= ym_freq_b):
                                     bass_channel = 2
                                 else:
                                     print(" ERROR: no bass channel assigned - should not happen!")
+                                    if not ym_mix_tone_a and not ym_mix_tone_b and not ym_mix_tone_c:
+                                        print("  - Because No Tone Channels have Mix Enabled.")
                                     if ENABLE_DEBUG:
                                         print("   lo_count=" + str(lo_count) + " ym_freq_a="+str(ym_freq_a)+" ym_freq_b="+str(ym_freq_b)+" ym_freq_c="+str(ym_freq_c))
 
@@ -1775,7 +1846,7 @@ class YmReader(object):
                         sn_tone_out[0] = ym_to_sn(ym_tone_c)
                         sn_tone_out[1] = ym_to_sn(ym_tone_b)
                         sn_tone_out[2] = ym_to_sn(ym_tone_a, True)
-
+                        tone_sent = True
 
 
                     else:
@@ -1791,22 +1862,35 @@ class YmReader(object):
                             sn_tone_out[0] = ym_to_sn(ym_tone_a)
                             sn_tone_out[1] = ym_to_sn(ym_tone_c)
                             sn_tone_out[2] = ym_to_sn(ym_tone_b, True)
+                            tone_sent = True
 
                         else:
-                            # it's C  
-                            if ENABLE_DEBUG:  
-                                print("  Channel C -> Bass ")
+                            if bass_channel == 2:
+                                # it's C  
+                                if ENABLE_DEBUG:  
+                                    print("  Channel C -> Bass ")
 
-                            channel_map_a = 0
-                            channel_map_b = 1
-                            channel_map_c = 2
+                                channel_map_a = 0
+                                channel_map_b = 1
+                                channel_map_c = 2
 
-                            sn_tone_out[0] = ym_to_sn(ym_tone_a)
-                            sn_tone_out[1] = ym_to_sn(ym_tone_b)
-                            sn_tone_out[2] = ym_to_sn(ym_tone_c, True)
+                                sn_tone_out[0] = ym_to_sn(ym_tone_a)
+                                sn_tone_out[1] = ym_to_sn(ym_tone_b)
+                                sn_tone_out[2] = ym_to_sn(ym_tone_c, True)
+                                tone_sent = True
+                            else:
+                                # same as above
+                                print(" ERROR2: no bass channel assigned - should not happen!")
 
                      
 
+            # write tones without modification if no bass adjustment happened
+            if not tone_sent:
+                
+                # tones get written anyway, if there's some low frequency tones detected, they'll get modded
+                sn_tone_out[0] = ym_to_sn(ym_tone_a)
+                sn_tone_out[1] = ym_to_sn(ym_tone_b)
+                sn_tone_out[2] = ym_to_sn(ym_tone_c)
 
 
 
@@ -1896,11 +1980,11 @@ class YmReader(object):
                 # most tunes dont seem to change the noise frequency much
             else:
                 if bass_active:
-                    sn_tone_out[3] = 3 # Periodic noise
+                    sn_tone_out[3] = 3 # Tuned Periodic noise
 
             # sanity check. was previously a bug.
-            if sn_tone_out[3] == 0:
-                print("WARNING: Noise tone 0 - should not happen!")
+            if sn_tone_out[3] == 0 and sn_attn_out[3] != 0:
+                print("WARNING: Noise tone 0 - should not happen! attenuation=" + str(sn_attn_out[3]) )
 
 
             #--------------------------------------------------
@@ -2081,7 +2165,7 @@ class YmReader(object):
 
                     # for the noise channel, only output register writes
                     # if the noise tone has changed, so that we dont unnecessarily
-                    # reset the LSFR
+                    # reset the LFSR
                     if sn_tone_out[3] != sn_tone_latch[3]:
                         sn_tone_latch[3] = sn_tone_out[3]
                         output_sn_noise(sn_tone_latch[3])
