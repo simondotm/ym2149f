@@ -224,7 +224,7 @@ def get_ym_volume(a):
     if True:
         dist = 1<<31
         index = 0
-        for n in xrange(32):
+        for n in range(32):
             ya = ym_amplitude_table[n]
             p = a - ya
             d = p * p
@@ -417,7 +417,7 @@ class YmEnvelopeFPGA():
 
     # advance the envelope emulator by provided number of clock cycles
     def tick(self, clocks):
-        for x in xrange(clocks):
+        for x in range(clocks):
             # emulate the clock divider
             #-- / 8 when SEL is high and /16 when SEL is low
 
@@ -435,12 +435,12 @@ class YmEnvelopeFPGA():
         self.reset()
         print('default volume - ' + str(self.get_envelope_volume()))
 
-        for m in xrange(16):
+        for m in range(16):
             self.reset()
             self.set_envelope_shape(m)
             self.set_envelope_freq(0,1) # interval of 1
             vs = ''
-            for n in xrange(128):
+            for n in range(128):
                 v = self.get_envelope_volume() >> 1
                 vs += format(v, 'x')
                 self.envelope_cycle()
@@ -510,7 +510,7 @@ class YmEnvelope():
         hold_lo = []
 
         # populate these waveforms as 32 5-bit volume levels, where 0 is silent, 31 is full volume
-        for x in xrange(0,32):
+        for x in range(0,32):
             ramp_up.append(x)
             ramp_dn.append(31-x)
             hold_hi.append(31)
@@ -643,12 +643,12 @@ class YmEnvelope():
         self.reset()
         print('default volume - ' + str(self.get_envelope_volume()))
 
-        for m in xrange(16):
+        for m in range(16):
             self.reset()
             self.set_envelope_shape(m)
             self.set_envelope_freq(0,1) # interval of 1
             vs = ''
-            for n in xrange(128):
+            for n in range(128):
                 v = self.get_envelope_volume() >> 1
                 vs += format(v, 'x')
                 self.tick(8)
@@ -687,14 +687,31 @@ class YmReader(object):
             self.__header['author_name'] = ''
             self.__header['song_comment'] = ''
         else:
+            #print("here")
             # YM6!
             # Thanks http://stackoverflow.com/questions/32774910/clean-way-to-read-a-null-terminated-c-style-string-from-a-file
-            toeof = iter(functools.partial(self.__fd.read, 1), '')
+            #toeof = iter(functools.partial(self.__fd.read, 1), '')
+            
+            #print("here2")
+            #def readcstr():
+            #    return ''.join(itertools.takewhile('\0'.__ne__, toeof))
+
             def readcstr():
-                return ''.join(itertools.takewhile('\0'.__ne__, toeof))
+                chars = []
+                while True:
+                    c = self.__fd.read(1)
+                    if c == b'\x00': #chr(0):
+                        return "".join(chars)
+                    #print(c)
+                    chars.append(c.decode("utf-8") )
+
+            #print("here3")
             self.__header['song_name'] = readcstr()
+            #print("here4")
             self.__header['author_name'] = readcstr()
+            #print("here5")
             self.__header['song_comment'] = readcstr()
+            #print("here6")
 
     def __parse_header(self):
         # See:
@@ -703,6 +720,7 @@ class YmReader(object):
 
         # Parse the YM file format identifier first
         ym_format = self.__fd.read(4)
+        ym_format = ym_format.decode("utf-8") 
         print("YM Format: " + ym_format)
 
         # we support YM2, YM3, YM5 and YM6
@@ -775,7 +793,7 @@ class YmReader(object):
                 print(" Samples are UNSIGNED")
 
 
-            for i in xrange(num_dd):
+            for i in range(num_dd):
                 # skip over the digidrums sample file data section for now
                 #print self.__fd.tell()
                 sample_size = struct.unpack('>I', self.__fd.read(4))[0]   # get sample size
@@ -807,7 +825,7 @@ class YmReader(object):
         cnt  = self.__header['nb_frames']
 
         regs = []
-        for i in xrange( self.__header['nb_registers']):
+        for i in range( self.__header['nb_registers']):
             regs.append(self.__fd.read(cnt))            
 
         # support output of just the intro (for tunes with looping sections)       
@@ -826,7 +844,7 @@ class YmReader(object):
 
         if ENABLE_DEBUG:
             print(" Loaded " + str(len(regs)) + " register data chunks")
-            for r in xrange( self.__header['nb_registers']):
+            for r in range( self.__header['nb_registers']):
                 print(" Register " + str(r) + " entries = " + str(len(regs[r])))
 
 
@@ -981,11 +999,11 @@ class YmReader(object):
         # but technically is a better representation? hmm.... revist
         sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 10362, 13045, 16422, 20675, 26028, 32767 ]
         ym_sn_volume_table = []
-        for n in xrange(32):
+        for n in range(32):
             a = int(get_ym_amplitude(n) * 32767.0)
             dist = 1<<31
             index = 0
-            for i in xrange(16):
+            for i in range(16):
                 l = sn_volume_table[i]
                 p = a - l
                 d = p * p
@@ -1015,7 +1033,7 @@ class YmReader(object):
             # some tunes have incorrect data stream lengths, handle that here.
             if r < len(regs) and i < self.__header['nb_frames'] and i < len(regs[r]) :
                 n = regs[r][i]
-                return int(binascii.hexlify(n), 16)
+                return int(n) #int( struct.unpack('B', n)[0] ) #int(n) #int(binascii.hexlify(n), 16)
             else:
                 print("ERROR: Register out of range - bad sample ID or corrupt file?")
                 return 0
@@ -1269,7 +1287,7 @@ class YmReader(object):
         channel_lof_multi3 = 0
         envelope_count = 0
 
-        for i in xrange(cnt):
+        for i in range(cnt):
             ym_tone_a = get_register_word(0) & 4095
             ym_tone_b = get_register_word(2) & 4095
             ym_tone_c = get_register_word(4) & 4095
@@ -1338,8 +1356,8 @@ class YmReader(object):
         # YM stream processing code
         #--------------------------------------------------------------
         # Scan the YM stream one frame at a time
-        for i in xrange(cnt):
-            secs = i / frame_rate
+        for i in range(cnt):
+            secs = int(i / frame_rate)
             mins = int(secs / 60)
             secs = secs % 60
 
@@ -1931,7 +1949,7 @@ class YmReader(object):
             # Now we sample the volume repeatedly at the rate given. This has the effect of simulating the envelopes at a better resolution.
             sample_rate = SAMPLE_RATE # 1 # 441 # / SAMPLE_RATE # 63 # 700Hz
             sample_interval = 882 / sample_rate
-            for sample_loops in xrange(0,sample_rate):
+            for sample_loops in range(0,sample_rate):
 
 
                 if (ENABLE_ENVELOPES):
@@ -2115,7 +2133,7 @@ class YmReader(object):
                 else:
                     if False and ENABLE_ENVELOPES:
 
-                        for n in xrange(882):
+                        for n in range(882):
                             # update the envelope cpu emulation
                             self.__ymenv.tick( self.__header['chip_clock'] / 44100 )
                             vgm_stream.extend( struct.pack('B', 0x61) ) 
@@ -2181,7 +2199,7 @@ class YmReader(object):
             # notes
             gd3_data.extend( self.__header['song_comment'].encode("utf_16le") + b'\x00\x00') # notes
             
-            gd3_stream.extend('Gd3 ')
+            gd3_stream.extend(b'Gd3 ')
             gd3_stream.extend(struct.pack('I', 0x100))				# GD3 version
             gd3_stream.extend(struct.pack('I', len(gd3_data)))		# GD3 length		
             gd3_stream.extend(gd3_data)		
@@ -2199,7 +2217,7 @@ class YmReader(object):
         vgm_data.extend(struct.pack('I', vgm_clock)) #self.metadata['sn76489_clock']))
         vgm_data.extend(struct.pack('I', 0))#self.metadata['ym2413_clock']))
         vgm_data.extend(struct.pack('I', gd3_offset))				# GD3 offset
-        vgm_data.extend(struct.pack('I', cnt*VGM_FREQUENCY/50)) #self.metadata['total_samples']))				# total samples
+        vgm_data.extend(struct.pack('I', int(cnt*VGM_FREQUENCY/50))) #self.metadata['total_samples']))				# total samples
         vgm_data.extend(struct.pack('I', 0)) #self.metadata['loop_offset']))				# loop offset
         vgm_data.extend(struct.pack('I', 0)) #self.metadata['loop_samples']))				# loop # samples
         vgm_data.extend(struct.pack('I', 50))#self.metadata['rate']))				# rate
@@ -2235,10 +2253,10 @@ class YmReader(object):
 
             frame_count = frame_total #16 # frame_total #33 # number of frames to package at a time
             #offs = 0
-            for c in xrange(frame_total / frame_count):
-                for r in xrange(frame_size):
+            for c in range(frame_total / frame_count):
+                for r in range(frame_size):
                     rdata = bytearray()
-                    for n in xrange(frame_count):
+                    for n in range(frame_count):
                         rdata.append(raw_stream[c*frame_count*frame_size + n*frame_size + r])
                     #offs += frame_size
                     fh.write(rdata)
@@ -2307,12 +2325,12 @@ class YmReader(object):
             print(packet_count)
             print(len(raw_stream)/11)
 
-            for c in xrange(packet_count):
+            for c in range(packet_count):
                 # SN data first
-                for r in xrange(11):
+                for r in range(11):
                     output_block.append(raw_stream[c*11 + r])
                 # YM data next
-                for r in xrange(14):
+                for r in range(14):
                     output_block.append(regs[r][c])
     
             fh = open( vgm_filename.rsplit( ".", 1 )[ 0 ] + ".bin", 'wb')
@@ -2474,7 +2492,7 @@ if __name__ == '__main__':
         with open(sys.argv[1], 'w') as fd:
             time.sleep(2) # Wait for Arduino reset
             frame_t = time.time()
-            for i in xrange(header['nb_frames']):
+            for i in range(header['nb_frames']):
                 # Substract time spent in code
                 time.sleep(1./header['frames_rate'] - (time.time() - frame_t))
                 frame_t = time.time()
