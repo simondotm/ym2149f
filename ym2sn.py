@@ -52,6 +52,13 @@ ENABLE_VERBOSE = False
 
 ARDUINO_BIN = False
 
+# Percussive Noise has a dedicated channel and attenuator on the SN
+# whereas on the YM, the noise waveform is logically OR'd with the squarewave
+# Therefore each YM channel contributes 1/3 of the overall noise volume
+# As a result SN percussion adds 25% extra volume in the mix unless we compensate for it.
+# This scaler allows that to be balanced
+# This can be tweaked if necessary
+NOISE_MIX_SCALE = 1.0 / 3.0 
 
 # Runtime options (not command line options)
 ENABLE_NOISE = True         # enables noises to be processed
@@ -195,7 +202,10 @@ sn_volume_table= [ 0, 1304, 1642, 2067, 2603, 3277, 4125, 5193, 6568, 8231, 1036
 
 # Taken from: https://github.com/true-grue/ayumi/blob/master/ayumi.c
 # However, it doesn't marry with the YM2149 spec sheet, nor with the anecdotal reports that the YM attentuation steps in -1.5dB increments. 
-# So, I'm gonna run with the datasheet version.
+# There are also other measurements here (for AY) https://github.com/mamedev/mame/blob/master/src/devices/sound/ay8910.cpp
+# It looks like it might just be a difference in output levels between AY and YM
+# So, I'm gonna run with the YM datasheet version.
+# This may need further consideration if we're importing a YM file originally from a CPC/AY
 YM_AMPLITUDE_TABLE_EMU = [
     0.0, 0.0,
     0.00465400167849, 0.00772106507973,
@@ -253,17 +263,17 @@ def get_ym_amplitude(v):
         return a
 
 # given an amplitude, return the nearest 5-bit volume level
-def get_ym_volume(a):
+def get_ym_volume(amplitude):
     if USE_YM_AMPLITUDE_TABLE:
-        dist = 1<<31
+        best_dist = 1<<31
         index = 0
         for n in range(32):
-            ya = ym_amplitude_table[n]
-            p = a - ya
-            d = p * p
+            ym_amplitude = ym_amplitude_table[n]
+            p = amplitude - ym_amplitude
+            dist = p * p
             # we always round to the nearest louder level (so we are never quieter than target level)
-            if d < dist and ya >= a:
-                dist = d
+            if dist < best_dist and ym_amplitude >= amplitude:
+                best_dist = dist
                 index = n
 
         return index
@@ -1724,10 +1734,12 @@ class YmReader(object):
 
             # load the current tones & volumes
             # ym_volumes are 5 bit, so we must map to 4 bits.
-            sn_attn_out[0] = ym_volume_a >> 1
-            sn_attn_out[1] = ym_volume_b >> 1
-            sn_attn_out[2] = ym_volume_c >> 1
-            sn_attn_out[3] = 0
+            # SM: changed this so it isn't misleading us to think we're using a crappy shift scale for volume
+            # sn_attn_out[] is always set further down after the various envelope & mix parameters have been processed
+            sn_attn_out[0] = -1 #ym_volume_a >> 1
+            sn_attn_out[1] = -1 #ym_volume_b >> 1
+            sn_attn_out[2] = -1 #ym_volume_c >> 1
+            sn_attn_out[3] = -1
 
             #--------------------------------------------------
             # Process noise mixers
@@ -1738,16 +1750,22 @@ class YmReader(object):
             if ENABLE_NOISE:
                 if (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
 
-                    if ym_mix_noise_a: # and not ym_mix_tone_a:
+                    if ym_mix_noise_a and ym_volume_a > 0: # and not ym_mix_tone_a:
                         noise_active += 1
-                    if ym_mix_noise_b: # and not ym_mix_tone_b:
+                    if ym_mix_noise_b and ym_volume_b > 0: # and not ym_mix_tone_b:
                         noise_active += 1
-                    if ym_mix_noise_c: # and not ym_mix_tone_c:
+                    if ym_mix_noise_c and ym_volume_c > 0: # and not ym_mix_tone_c:
                         noise_active += 1
 
                     if ENABLE_DEBUG:
                         print("  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise))
 
+                    if ym_volume_a == 0 and ym_mix_noise_a:
+                        print(" TITS1")
+                    if ym_volume_b == 0 and ym_mix_noise_b:
+                        print(" TITS2")
+                    if ym_volume_c == 0 and ym_mix_noise_c:
+                        print(" TITS3")
 
 
             #--------------------------------------------------
@@ -2071,25 +2089,33 @@ class YmReader(object):
 
                 # determine which channels have the noise mixer enabled
                 # then calculate a volume which is the average level
+                # nope - each channel mixer can contribute 1/3 of the overall noise mix
+                # we do this work in normalized amplitude space for better precision
                 noise_volume = 0
                 if ENABLE_NOISE and noise_active:
 
                     noise_amplitude = 0.0
                     if ym_mix_noise_a:
-                        noise_amplitude += get_ym_amplitude(ym_volume_a)
-                        #noise_volume += ym_volume_a
+                        noise_amplitude += get_ym_amplitude(ym_volume_a) * NOISE_MIX_SCALE
                     if ym_mix_noise_b:
-                        noise_amplitude += get_ym_amplitude(ym_volume_b)
-                        #noise_volume += ym_volume_b
+                        noise_amplitude += get_ym_amplitude(ym_volume_b) * NOISE_MIX_SCALE
                     if ym_mix_noise_c:
-                        noise_amplitude += get_ym_amplitude(ym_volume_c)
-                        #noise_volume += ym_volume_b
+                        noise_amplitude += get_ym_amplitude(ym_volume_c) * NOISE_MIX_SCALE
 
                     # average the noise amplitude based on number of active noise channels
-                    #nv = noise_volume / noise_active
-                    noise_amplitude /= noise_active
+                    #noise_amplitude /= noise_active
+                    if (noise_amplitude > 1.0):
+                        print("ERROR: Noise Amplitude is distorted > 1.0 " + str(noise_amplitude))
+
+                    # scale the overall mix of the noise
+                    # to reflect the fact that we have a dedicated channel on SN for noise
+                    # whereas on YM noise is logically OR'd with the squarewave
+                    #noise_amplitude *= NOISE_MIX_SCALE
+
                     # amplitude back to 5-bit volume
                     noise_volume = get_ym_volume(noise_amplitude)
+
+                    
 
                     #print "  Noise Average from volume=" + str(nv) + ", new method average=" + str(noise_volume)
                     #noise_volume = 15
@@ -2127,14 +2153,18 @@ class YmReader(object):
                 else:
                     # no noise active, so check if bass is active (since thats emulated on SN noise channel using tuned periodic noise)
                     if bass_active:
-                        # we need to determine the volume of the simulated bass so we can set the correct volume for the SN noise channel
-                        bass_volume = ym_volume_a
                         # no noise, just bass. turn off tone2, apply bass volume to channel 3  
-                        if bass_channel == 1: # b
-                            bass_volume = ym_volume_b
+                        # we need to determine the volume of the simulated bass so we can set the correct volume for the SN noise channel
+                        if bass_channel == 0:
+                            bass_volume = ym_volume_a
                         else:
-                            if bass_channel == 2: # c
-                                bass_volume = ym_volume_c
+                            if bass_channel == 1: # b
+                                bass_volume = ym_volume_b
+                            else:
+                                if bass_channel == 2: # c
+                                    bass_volume = ym_volume_c
+                                else:
+                                    print("ERROR: No bass channel set when setting bass volume.")
 
                         # output bass settings to SN
                         sn_attn_out[3] = get_sn_volume(bass_volume)
@@ -2144,6 +2174,10 @@ class YmReader(object):
                         # no noise, no bass, so just turn off noise channel
                         sn_attn_out[3] = 0
 
+
+                # Double check that all attenuation channels have been processed correctly
+                if (sn_attn_out[0] < 0 or sn_attn_out[1] < 0 or sn_attn_out[2] < 0 or sn_attn_out[3] < 0):
+                    print("ERROR: Attenuation was not correctly applied to one of the channels, " + str(sn_attn_out))
 
 
                 #-------------------------------------------------
