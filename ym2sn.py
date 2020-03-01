@@ -40,7 +40,7 @@ SN_CLOCK = 4000000              # set this to the target SN chip clock speed
 LFSR_BIT = 15                   # set this to either 15 or 16 depending on which bit of the LFSR is tapped in the SN chip
 
 ENABLE_ENVELOPES = True     # enable this to simulate envelopes in the output
-ENABLE_ATTENUATION = True  # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
+ENABLE_ATTENUATION = False  # enables conversion of YM to SN attenuation. In theory a better matching of volume in the output.
 
 FILTER_CHANNEL_A = False
 FILTER_CHANNEL_B = False
@@ -276,6 +276,7 @@ def get_ym_volume(amplitude):
                 best_dist = dist
                 index = n
 
+
         return index
     else:        
         if (a == 0.0):
@@ -309,7 +310,6 @@ for n in range(32):
 
     ym_sn_volume_table.append(index)
 
-print(ym_sn_volume_table)
 
 
 # get the nearest 4-bit logarithmic volume to the given 5-bit ym_volume
@@ -320,7 +320,7 @@ def get_sn_volume(ym_volume):
         # use lookup table
         return ym_sn_volume_table[ym_volume]
     else:
-        # simple attentuation map
+        # simple attenuation map
         return (ym_volume >> 1) & 15
 
 
@@ -328,6 +328,10 @@ def get_sn_volume(ym_volume):
 
 # print the tables
 if True:
+
+    print("ym_sn_volume_table:")
+    print(ym_sn_volume_table)
+
     #def get_ym_amplitude2(v):
     #    if v == 0:
     #        a = 0.0
@@ -342,6 +346,7 @@ if True:
     #for n in range(32):
     #    ym_amplitude_table2.append( get_ym_amplitude2(n) )
 
+    print("attenuation tables:")
     print("{: >2} {: >20} {: >20} {: >20}".format("level", "ymtable_emu", "logtable_datasheet", "sntable"))
     for n in range(32):
         print("{: >2} {: >20} {: >20} {: >20}".format(n, YM_AMPLITUDE_TABLE_EMU[n], YM_AMPLITUDE_TABLE_DS[n], sn_volume_table[n>>1]/32767.0))
@@ -1551,22 +1556,26 @@ class YmReader(object):
             if ENABLE_NOISE:
                 if (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
 
-                    if ym_mix_noise_a and ym_volume_a > 0: # and not ym_mix_tone_a:
+                    if ym_mix_noise_a:# and ym_volume_a > 0: # and not ym_mix_tone_a:
                         noise_active += 1
-                    if ym_mix_noise_b and ym_volume_b > 0: # and not ym_mix_tone_b:
+                    if ym_mix_noise_b:# and ym_volume_b > 0: # and not ym_mix_tone_b:
                         noise_active += 1
-                    if ym_mix_noise_c and ym_volume_c > 0: # and not ym_mix_tone_c:
+                    if ym_mix_noise_c: # and ym_volume_c > 0: # and not ym_mix_tone_c:
                         noise_active += 1
 
                     if ENABLE_DEBUG:
                         print("  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise))
 
-                    if ym_volume_a == 0 and ym_mix_noise_a:
-                        print(" TITS1")
-                    if ym_volume_b == 0 and ym_mix_noise_b:
-                        print(" TITS2")
-                    if ym_volume_c == 0 and ym_mix_noise_c:
-                        print(" TITS3")
+                    if ENABLE_DEBUG:
+                        # some debug code to see if there really are
+                        # occasions where noise is active but volume for the channel is 0
+                        # this is often because envelopes are being used
+                        if ym_volume_a == 0 and ym_mix_noise_a:
+                            print(" - Channel A has noise enabled but no channel volume")
+                        if ym_volume_b == 0 and ym_mix_noise_b:
+                            print(" - Channel B has noise enabled but no channel volume")
+                        if ym_volume_c == 0 and ym_mix_noise_c:
+                            print(" - Channel C has noise enabled but no channel volume")
 
 
             #--------------------------------------------------
@@ -1911,7 +1920,7 @@ class YmReader(object):
                     # scale the overall mix of the noise
                     # to reflect the fact that we have a dedicated channel on SN for noise
                     # whereas on YM noise is logically OR'd with the squarewave
-                    #noise_amplitude *= NOISE_MIX_SCALE
+                    #noise_amplitude *= 0.75 #NOISE_MIX_SCALE
 
                     # amplitude back to 5-bit volume
                     noise_volume = get_ym_volume(noise_amplitude)
