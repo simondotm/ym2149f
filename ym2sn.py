@@ -52,6 +52,10 @@ ENABLE_VERBOSE = False
 
 ARDUINO_BIN = False
 
+ENABLE_TUNED_NOISE = False # enable this to tune white noise rather than use the nearest fixed frequency white noise
+# white noise is generated every counter cycle, so unlike square wave scale is 1.0 rather than 2.0
+SN_NOISE_DC = 2.0 # 2.0
+
 # Percussive Noise has a dedicated channel and attenuator on the SN
 # whereas on the YM, the noise waveform is logically OR'd with the squarewave
 # Therefore each YM channel contributes 1/3 of the overall noise volume
@@ -327,7 +331,7 @@ def get_sn_volume(ym_volume):
 
 
 # print the tables
-if True:
+if ENABLE_DEBUG:
 
     print("ym_sn_volume_table:")
     print(ym_sn_volume_table)
@@ -637,7 +641,7 @@ class YmReader(object):
             print("Version 2")
             d['id'] = ym_format
             d['check_string'] = 'LeOnArD!'
-            d['nb_frames'] = (self.__filesize-4)/14
+            d['nb_frames'] = int( (self.__filesize-4)/14 )
             d['song_attributes'] = 1 # interleaved
             d['nb_digidrums'] = 0
             d['chip_clock'] = 2000000
@@ -733,7 +737,8 @@ class YmReader(object):
 
         regs = []
         for i in range( self.__header['nb_registers']):
-            regs.append(self.__fd.read(cnt))            
+            buf = self.__fd.read(cnt) # bytearray
+            regs.append(buf)            
 
         # support output of just the intro (for tunes with looping sections)       
         loop_frame = self.__header['loop_frame']
@@ -843,6 +848,8 @@ class YmReader(object):
             print(" + Envelope Emulation is ENABLED")
         if ENABLE_ATTENUATION:
             print(" + Volume Attenuation is ENABLED")
+        if ENABLE_TUNED_NOISE:
+            print(" + Tuned White Noise is ENABLED [EXPERIMENTAL]")
 
         def get_register_data(register, frame):
             return int(binascii.hexlify(regs[register][frame]), 16)
@@ -907,7 +914,17 @@ class YmReader(object):
             # some tunes have incorrect data stream lengths, handle that here.
             if r < len(regs) and i < self.__header['nb_frames'] and i < len(regs[r]) :
                 n = regs[r][i]
-                return int(n) #int( struct.unpack('B', n)[0] ) #int(n) #int(binascii.hexlify(n), 16)
+                # this is some python2.7/3.x bullshit
+                # can't figure out how to parse these bytes in a way that runs on both 2.7 and 3.x
+                try:
+                    v = int(n)
+                except:
+                    # some conversion shit happened.
+                    v = int( struct.unpack('B', n)[0] ) #n = n # woteva
+                finally:
+                    return v #int( struct.unpack('B', n)[0] )
+                #v = int( struct.unpack('B', n)[0] )
+                #return v #int( struct.unpack('B', n)[0] ) #int(n) #int(binascii.hexlify(n), 16)
             else:
                 print("ERROR: Register out of range - bad sample ID or corrupt file?")
                 return 0
@@ -1127,8 +1144,11 @@ class YmReader(object):
         def output_sn_noise(tone):
 
             # We would not expect to see tones other than 3 (tuned periodic noise) or 4,5,6 (fixed frequency white noise)
+            # Or 7 (tuned white noise if ENABLE_TUNED_NOISE is set)
             # so flag if so.
-            if (tone != 4) and (tone != 3) and (tone != 5) and (tone != 6):
+            bad_tuned_noise_value = (tone == 7 and not ENABLE_TUNED_NOISE)
+            bad_noise_value = (tone != 4) and (tone != 3) and (tone != 5) and (tone != 6)
+            if bad_noise_value and bad_tuned_noise_value:
                 print("WARNING: Detected unusual noise note - " + str(tone))
 
             r_lo = 128 + (3 << 5) + (tone & 15)
@@ -1205,8 +1225,10 @@ class YmReader(object):
         print("  Channel A has " + str(channel_lof_a) + " low frequency tones")
         print("  Channel B has " + str(channel_lof_b) + " low frequency tones")
         print("  Channel C has " + str(channel_lof_c) + " low frequency tones")
-        print("  There were " + str(channel_lof_multi2) + " frames where 2 channels were simultaneous low frequency tones")
-        print("  There were " + str(channel_lof_multi3) + " frames where 3 channels were simultaneous low frequency tones")
+        if channel_lof_multi2:
+            print("  There were " + str(channel_lof_multi2) + " frames where 2 channels were simultaneous low frequency tones")
+        if channel_lof_multi3:
+            print("  There were " + str(channel_lof_multi3) + " frames where 3 channels were simultaneous low frequency tones")
 
         bass_channel_bias = 0 # a
         if channel_lof_b > channel_lof_a and channel_lof_b > channel_lof_c:
@@ -1217,9 +1239,25 @@ class YmReader(object):
         if (FORCE_BASS_CHANNEL >= 0):
             bass_channel_bias = FORCE_BASS_CHANNEL
 
-        print("    Selecting channel " + str(bass_channel_bias) + " as the priority bass channel")
+        channel_name_map = [ 'A', 'B', 'C' ]
+        print("    Selecting channel " + str(channel_name_map[bass_channel_bias]) + " as the priority bass channel, since it has the most low frequency tones.")
         print("---")
 
+
+
+
+        if ENABLE_DEBUG:
+            print("ym noise table:")
+            for testn in range(32):
+                f = 0
+                snf = 0
+                sn_tone = 0
+                if testn > 0:
+                    f = float(clock) / (16.0 * testn)
+                    sn_tone = int( 0.5 + float(vgm_clock) / (SN_NOISE_DC * f * 16.0) )
+                    snf = float(vgm_clock) / ((16.0 *SN_NOISE_DC) * sn_tone)
+
+                print("YM Noise value=" + str(testn) + ", Freq=" + str(int(f)) + " Hz, SN Noise (Tone3) Value=" + str(sn_tone) + ", SN Freq=" + str(snf))
 
         # Initialise these outside of the main loop so that their state persists across frame
         # otherwise we can end up with data being incorrectly reset - particularly on the noise channel
@@ -1424,7 +1462,7 @@ class YmReader(object):
 
             # noise
             #s += ", Noise"
-            s += ", " + '{:3d}'.format( ym_noise )
+            s += ", Noise=" + '{:3d}'.format( ym_noise )
             s += " ]"
 
             # volume
@@ -1726,10 +1764,13 @@ class YmReader(object):
             # Process noise tones
             #--------------------------------------------------
 
+            sn_noise_freq = 0 # used by ENABLE_TUNED_NOISE feature
+            # set to zero if no tuned white noise override is active this frame
+
             if noise_active:
-                sn_noise_freq_0 = float(vgm_clock) / (32.0 * 16.0) # 15.6 Khz @ 4Mhz
-                sn_noise_freq_1 = float(vgm_clock) / (32.0 * 32.0) #  7.8 Khz @ 4Mhz
-                sn_noise_freq_2 = float(vgm_clock) / (32.0 * 64.0) #  3.9 Khz @ 4Mhz
+                sn_noise_freq_0 = float(vgm_clock) / (32.0 * 16.0) # 7.8 Khz @ 4Mhz
+                sn_noise_freq_1 = float(vgm_clock) / (32.0 * 32.0) # 3.9 Khz @ 4Mhz
+                sn_noise_freq_2 = float(vgm_clock) / (32.0 * 64.0) # 1.9 Khz @ 4Mhz
 
                 noise_freq = 0
                 if ym_noise == 0:
@@ -1766,6 +1807,9 @@ class YmReader(object):
                     d = f1 - f2
                     return math.sqrt(d*d)
 
+                if ENABLE_TUNED_NOISE:
+                    sn_noise_freq = int( float(vgm_clock) / noise_freq )
+
                 sn_noise = 0
                 if ENABLE_NOISE_PITCH:
                     min_dist = 1<<31
@@ -1790,7 +1834,14 @@ class YmReader(object):
                         min_dist = dist
                         sn_noise = 2
                     
+                    # arbitary error of 3Khz triggers tuned noise
+                    if ENABLE_DEBUG:
+                        if ENABLE_TUNED_NOISE and min_dist > 3000:
+                            print("TIME TO TUNE SOME NOISE")
+                        else:
+                            print("NEAR ENOUGH TO FIXED FREQUENCY")
 
+                    # TODO: remove this
                     if False:
                         if noise_freq > (sn_noise_freq_0 - ((sn_noise_freq_0-sn_noise_freq_1) * 0.75)):
                             sn_noise = 0
@@ -1948,11 +1999,27 @@ class YmReader(object):
                 #------------------------------------------------
 
 
-
                 # tone volumes first. we're converting the 5-bit YM volumes to 4-bit SN volumes.
                 sn_attn_out[channel_map_a] = get_sn_volume(ym_volume_a)
                 sn_attn_out[channel_map_b] = get_sn_volume(ym_volume_b)
                 sn_attn_out[channel_map_c] = get_sn_volume(ym_volume_c)
+
+
+                if ENABLE_TUNED_NOISE and sn_noise_freq > 0:
+                    sn_tone_out[3] = 4 + 3 # bit 2 selects White noise, 0/1/2 are fixed low frequency (16 cycle) (3 is the tuned white noise)
+                    
+                    if (ym_noise > 0):
+                        ym_noise_freq = float(clock) / (16.0 * ym_noise)
+                    else:
+                        ym_noise_freq = 1
+
+                    sn_noise_tone = int( 0.5 + float(vgm_clock) / (SN_NOISE_DC * ym_noise_freq * 16.0) )
+
+                    sn_tone_out[2] = sn_noise_tone #4 #sn_noise_freq
+                    sn_attn_out[2] = 0
+                    if ENABLE_DEBUG:
+                        print(" - TUNED NOISE OVERRODE CHANNEL 3")
+
 
                 # then noise or bass
                 if noise_active:
@@ -2304,6 +2371,7 @@ if __name__ == '__main__':
     parser.add_argument("-r", "--rate", type=int, default=50, metavar="<n>", help="Set envelope sample rate to <n> Hz (must be divisble by 50!), default: 50Hz")
     parser.add_argument("-f", "--filter", default='', metavar="<s>", help="Filter channels A,B,C,N <s> is a string, eg. -f AB")
     parser.add_argument("-b", "--bass", help="Enable software bass (output VGM will not be hardware compliant for bass tones)", default=False, action="store_true")
+    parser.add_argument("-w", "--white", help="Enable tuned white noise [experimental]", default=False, action="store_true")
     parser.add_argument("-t", "--attenuation", help="Force SN76489 attentuation mapping (volumes scaled from YM dB to SN dB) [Experimental]", default=False, action="store_true")
     parser.add_argument("-n", "--noenvelopes", help="Disable envelope simulation", default=False, action="store_true")
     parser.add_argument("-l", "--loops", help="Export two VGM files, one for intro and one for looping section", default=False, action="store_true")
@@ -2345,6 +2413,9 @@ if __name__ == '__main__':
         ENABLE_SOFTWARE_BASS = True
         TONE_RANGE = 4095
         ENABLE_BASS_TONES = False
+
+    if (args.white):
+        ENABLE_TUNED_NOISE = True
 
     if (args.rate % 50) != 0:
         print("ERROR: Envelope sample rate must be divisible by 50Hz.")

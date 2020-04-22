@@ -13,13 +13,14 @@ Turns out that wasn't such a crazy idea because the Atari ST uses a PSG that's p
 This repo contains a script I've created to do the conversion so that you can listen to these tunes on an SN76489 sound chip as well.
 
 ## Usage
+**NEW!** The script is now compatible with both Python 2.7 and Python 3.x.
 
 ```
 ym2sn.py : Convert Atari ST .YM files to SN76489 VGM music files
 Written in 2019 by Simon Morris, https://github.com/simondotm/ym2149f
 
 usage: ym2sn.py [-h] [-o <output>] [-c <n>] [-s <n>] [-r <n>] [-f <s>] [-b]
-                [-a] [-n] [-l] [-v] [-d]
+                [-w] [-t] [-n] [-l] [-a] [-v] [-d]
                 input
 
 positional arguments:
@@ -39,14 +40,19 @@ optional arguments:
   -f <s>, --filter <s>  Filter channels A,B,C,N <s> is a string, eg. -f AB
   -b, --bass            Enable software bass (output VGM will not be hardware
                         compliant for bass tones)
-  -a, --attenuation     Force SN76489 attentuation mapping (volumes scaled
+  -w, --white           Enable tuned white noise [experimental]
+  -t, --attenuation     Force SN76489 attentuation mapping (volumes scaled
                         from YM dB to SN dB) [Experimental]
   -n, --noenvelopes     Disable envelope simulation
   -l, --loops           Export two VGM files, one for intro and one for
                         looping section
+  -a, --arduino         Export Arduino BIN file
   -v, --verbose         Enable verbose mode
   -d, --debug           Enable debug mode
 
+Notes:
+ This tool does not support LHA compressed YM files, so
+  you must extract the archived YM file first.
 
 ```
 ### **Important Note**:
@@ -67,6 +73,26 @@ Will output `example/Androids.vgm` using default settings of:
 * envelope simulation
 * 4Mhz clocked / 15-bit LFSR SN76489 (BBC Micro specs)
 * 50Hz playback rate 
+
+### Command Line Options & Effect Explanations
+
+**Periodic Noise Bass**
+
+The script will by default use SN periodic noise to simulate low frequency notes. It will interleave these noise effects with other channels as intelligently as possible, and generally achieves pleasing results.
+
+Note however that that is a lossy approach and some notes on other channels may be switched around and/or sacrified to create space on channel C for the bass effect. Also note that since percussive noise effects take priority over simulated bass notes, the bass line may be interrupted to accommodate this. 
+
+**Software Bass**
+
+With this effect enabled, the script will not use periodic noise for bass frequencies, instead it will replace low frequency tones with "illegal" register data that contains additional flags for a software player to synthesize its own squarewave at the modified low frequency. Note that this feature will generate VGM outputs that do not sound correct.
+
+**Tuned White Noise [EXPERIMENTAL]**
+
+Normally the script will use the nearest "fixed frequency" white noise on the SN76489, which often is a decent approximation of the percussive sounds of the YM, however some subtlety is lost in the percussion.
+
+If this feature is enabled, the script will attempt to interleave tuning for the noise channel to closely match the noise frequency set on the YM. Similarly to the periodic noise bass effect above, this effect will interleave the necessary tuning by sacrificing notes on tone channel C, which at the moment does not always sound ok (depending on the specific tune and which channels it uses) - hence the EXPERIMENTAL flag.
+
+
 
 
 
@@ -164,8 +190,13 @@ The basic conversion process is as follows:
 
 Now we can play the conversion VGM in our favourite VGM player, or for playback on an actual SN chip, simply throw the packet of SN register writes (upto 11) at the chip each 50Hz frame and away we go.
 
-### Example Conversion
+### Example Conversions
 See Bitshifters' [Twisted Brain Demo](https://bitshifters.github.io/posts/prods/bs-twisted-brain.html) for an example of a conversion of [Mad Max's epic 'There aren't any sheep in outer mongolia'](https://www.youtube.com/watch?v=2mwbBwAjt8c) tune. It's 3m33s of pretty busy sound chip updates compressed down to 22Kb and unpacked/streamed to the PSG at 50Hz, so not the most efficient data format, but it sounds surprisingly good for an SN chip.
+
+Other examples of YM -> SN conversions via this script:
+* Bitshifters [Wave Runner Demo](https://www.youtube.com/watch?v=1_nTOLdhQXY) - Conversion of Scavenger's awesome tune
+* Bitshifters [Beeb-NICCC Demo](https://www.youtube.com/watch?v=_mVI9d2Acyw) - Conversion of an original YM composition of the Checknobankh MOD tune by Rhino
+* Conversion of Mad Max's [Virtual Escape end music](https://www.youtube.com/watch?v=AGxVsh8ZCQI) by me, using the new tuned `--white` noise effect.
 
 
 ## Challenges
@@ -183,6 +214,14 @@ The other compromise that using periodic noise for bass presents, is that we hav
 An important note here is that the tuning of Periodic noise on the SN76489 is influenced by which bit of the chip's LFSR (Linear feedback shift register) is tapped (bit 15 or bit 16).  The BBC Micro uses bit 15 (whereas other systems like the Sega Master System use bit 16). 
 
 See [here for more info](https://gist.github.com/simondotm/84a08066469866d7f2e6aad875e598be) on that if you are interested.
+
+
+### White Noise Limitations
+The YM has 5-bit range for noise frequency, whereas the SN only has 3 "fixed frequency" white noise effects. For percussive effects this can sometimes result in a dull conversion where hit hats and snares tend to sound less crisp.
+
+However, the SN does have a "tuned white noise" feature (similar to the tuned periodic noise above) so we can simulate all of the YM frequencies if we are prepared to sacrifice use a muted channel C to control the frequency of the white noise. 
+
+In practice we can interleave this white noise tuning with most compositions without any noticeable side effects, and the result is much crisper percussion. The latest version of the script supports this optional effect (`--white`), but at the time of writing it is still a work in progress as some glitches need ironing out for how it re-allocates other channels without muting important notes on channel C when tuned percussion is playing.
 
 ### Software Simulated Bass
 
