@@ -31,3 +31,28 @@ Next fix, lets filter out any voice updates where there's no change in register 
 Now we have a clearer music track, but our YM levels need improving because the SID voice level is a linear 12-bit DAC output whereas the YM is a logarithmic 5-bit DAC. Adding a conversion table from linear to logarithm level is a big win, the music voice mix is much more accurate now.
 
 With all of this done, its now far more obvious we have a tuning issue. The music sounds "about right" but there's a lot of off-tune tones. possibly rounding errors in our frequency conversions, or differences in precision between the SID oscillator and the YM frequency generator.
+
+## Step 9
+Took a bit of time to optimize the envelope ADSR process loop as it was rather brute force and slow. Subdividing the work and calculating if incremental counts were within range of the ADSR cycles for single iteration optimization seemed to do the trick, processing time reduced by a factor 4. 
+
+## Step 10
+Ok so it's clear to me now that SIDs might be running on PAL or NTSC derived clocks rather than the simple 1Mhz assumption I started with (based off the SID data sheet example clock).
+SidDump gives us a middle C value rather than a clock rate, which I can see does not match my calcs so lets see if we can deduce PAL or NTSC from that.
+https://dustlayer.com/c64-architecture/2013/5/7/hardware-basics-part-1-tick-tock-know-your-clock
+
+Also, I've noticed that the playback rate of the YM version doesn't match the SID. Very odd.
+
+
+# TODO
+support mode register (especially voice 3 off & primary volume)
+support filter register (if only to see what values are being sent)
+investigate white noise, not right
+check ADSR handling is accurate
+find out if multiple voices play noise at once?
+weight voice by volume if so
+find out how many voices use PWM simultaneously. could average an envelope maybe
+keep getting high beeps - some kind of voice not getting cleaned?
+noise mixing seems very different to sid
+support sid as parameter (route through siddump in script)
+space debris runs slowly, why?
+initial clock matching - check/improve this code

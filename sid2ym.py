@@ -35,7 +35,7 @@ from os.path import basename
 from string import Formatter
 from timeit import default_timer as timer
 
-FIXED_LENGTH = 0 #50* 60
+FIXED_LENGTH = 0 #50*10 #0 #50* 60
 ENABLE_ADSR = True #False
 
 ENABLE_DEBUG = False        # enable this to have ALL the info spitting out. This is more than ENABLE_VERBOSE
@@ -366,9 +366,6 @@ class SidVoice(object):
         self.set_control(0)
         self.set_envelope(0, 0)
 
-
-
-
     # registers 0,1 - frequency (16-bits)
     def set_frequency(self, f):# lo, hi):
         #f = lo + (hi * 256)
@@ -451,8 +448,6 @@ class SidVoice(object):
 
         # logic indicator if a waveform is active on this voice
         self.__wave_active = self.__noise or self.__pulse or self.__triangle or self.__sawtooth
-        if not self.__wave_active:
-            print("NOTE: No waveforms active on voice " + str(self.__voiceid))
 
 
         # handle gate trigger state change
@@ -473,7 +468,7 @@ class SidVoice(object):
         s += "TEST " if self.__test else "---- "
         s += "SYNC " if self.__sync else "---- "
         s += "GATE " if self.__gate else "---- "
-
+        s += " (NO WAVEFORMS ACTIVE)" if not self.__wave_active else ""
         print(self.voiceId() + "CONTROL set to: " + s)
 
     # register 5,6 - envelope (4x 4-bits)
@@ -687,8 +682,74 @@ class SidState(object):
         #self.__registers[36] = [0,]
         self.__voices = [ SidVoice(1), SidVoice(2), SidVoice(3) ]
 
+        self.set_filter_resonance(0)
+        self.set_filter_control(0)
+        self.set_master_volume(0)
+        self.set_filter_cutoff(0)        
+
     def get_voice(self, voice):
         return self.__voices[voice]
+
+
+    # filter cutoff frequency (16-bits)
+    # bits 3-7 are not used?
+    # registers $15-$16
+    def set_filter_cutoff(self, c):
+        self.__filter_cutoff = c
+
+
+
+    # filter enable controls (4-bits)
+    # register $17 (bits 0-3)
+    def set_filter_control(self, fc):
+        self.__filter_voice1 = (fc & 1) == 1
+        self.__filter_voice2 = (fc & 2) == 2
+        self.__filter_voice3 = (fc & 4) == 4
+        self.__filter_ext = (fc & 8) == 8
+
+        s = ""
+        s += "V1 " if self.__filter_voice1 else "-- "
+        s += "V2 " if self.__filter_voice2 else "-- "
+        s += "V3 " if self.__filter_voice3 else "-- "
+        s += "EX " if self.__filter_ext else "-- "
+
+        print("FILTER CONTROL set to: " + s)
+
+
+    # filter resonance (4-bits) (0-15) where 0 is no resonance
+    # register $17 (bits 4-7)
+    def set_filter_resonance(self, r):
+        self.__filter_resonance = r
+
+
+    # master volume (4-bits) (0-16) where 0 is no volume
+    # register $18 (bits 0-3)
+    def set_master_volume(self, v):
+        self.__master_volume = v
+
+    def get_master_volume(self):
+        return self.__master_volume
+
+    # filter mode (4-bits)
+    # register $18 (bits 4-7)
+    def set_filter_mode(self, m):
+        self.__filter_lo_pass = (m & 1) == 1
+        self.__filter_bn_pass = (m & 2) == 2
+        self.__filter_hi_pass = (m & 4) == 4
+        self.__filter_3_off = (m & 8) == 8
+
+        s = ""
+        s += "LO-P " if self.__filter_lo_pass else "---- "
+        s += "BN-P " if self.__filter_bn_pass else "---- "
+        s += "HI-P " if self.__filter_hi_pass else "---- "
+        s += "3OFF " if self.__filter_3_off else "---- "
+
+        print("FILTER MODE set to: " + s)
+
+
+
+    def is3off(self):
+        return self.__filter_3_off
 
     def tick(self, t):
         for voice in self.__voices:
@@ -725,34 +786,34 @@ class SidReader(object):
         
 
 
-        def parse_voice(channel):
+        def hex2int(s):
+            #s = s.replace(".", "0")
+            return int(s, 16)
 
-            # replace periods with zero's
-            # this might not be a good idea since we will end up writing registers that do not need to be written
-            def hex2int(s):
-                s = s.replace(".", "0")
-                return int(s, 16)
-            def isSet(s):
-                return not "." in s
+        def isSet(s):
+            return not "." in s
+
+        def parse_voice(segment):
+
 
             # 16-bits frequency
-            freq = channel[1:5]
-            channel = channel[5:]
+            freq = segment[1:5]
+            segment = segment[5:]
 
             # note - ignored
-            note = channel[1:9]
-            channel = channel[9:]
+            note = segment[1:9]
+            segment = segment[9:]
 
             # 8-bits control
-            wf = channel[1:3]
-            channel = channel[3:]
+            wf = segment[1:3]
+            segment = segment[3:]
             
             # 16-bits ADSR
-            adsr = channel[:5]
-            channel = channel[5:]
+            adsr = segment[:5]
+            segment = segment[5:]
 
             # 12-bits Pulse width
-            pul = channel[1:4]
+            pul = segment[1:4]
 
 
             # convert to data
@@ -775,6 +836,65 @@ class SidReader(object):
             print(data)
             return data
 
+        def parse_common(segment):
+            
+            data = {}
+
+            # 16-bits frequency cutoff register ($15,$16)
+            # bits 3-7 off lo are not used
+            cutoff = segment[1:5]
+            segment = segment[5:]
+            if isSet(cutoff):
+                data["cutoff"] = hex2int(cutoff)
+
+
+            # 8bit RES/Filter register ($17)
+            rc = segment[1:3]
+            segment = segment[3:]
+            if isSet(rc):
+                rc_v = hex2int(rc)
+                # resonance (bits 4-7 of register $17)
+                data["res"] = rc_v >> 4
+                # filter enable (bits 0-3 of register $17)
+                data["filter"] = rc_v & 15
+
+
+            #4bit mode filter output register ($18 bits 4-7)
+            # "Off" / "Hi " / "Low" / "B+H" / "L+B"
+            # Low = 
+            typ = segment[1:4]
+            segment = segment[4:]
+
+
+            # 4 - Low pass output
+            # 5 - Band pass output
+            # 6 - High pass output
+            # 7 - 3 Off (voice 3 muted)
+            typ_map = {
+                "Low" : 1,
+                "Hi " : 4,
+                "B+H" : 6,
+                "L+B" : 3,
+                "Off" : 8
+            }
+            if isSet(typ):
+                if typ in typ_map:
+                    value = typ_map[typ]
+                    data["typ"] = value
+                else:
+                    print("WARNING: Unhandled filter output mode '" + str(typ) + "'")
+
+
+            # master volume (register $18 bits 0-3)
+            v = segment[1:2]
+            if isSet(v):
+                data["v"] = hex2int(v)
+
+            print(data)
+            return data
+
+
+
 
         # 16 register sets on the YM file
         self.__regs = []
@@ -787,9 +907,10 @@ class SidReader(object):
         registers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
         # get the virtual voices
-        sid_voice1 = self.__sid.get_voice(0)
-        sid_voice2 = self.__sid.get_voice(1)
-        sid_voice3 = self.__sid.get_voice(2)
+        sid = self.__sid
+        sid_voice1 = sid.get_voice(0)
+        sid_voice2 = sid.get_voice(1)
+        sid_voice3 = sid.get_voice(2)
 
         # stats
         #stats = {}
@@ -840,6 +961,27 @@ class SidReader(object):
                 voice1 = parse_voice(frame[2]) # voice1
                 voice2 = parse_voice(frame[3]) # voice2
                 voice3 = parse_voice(frame[4]) # voice3
+
+                common = parse_common(frame[5]) # common data
+
+
+                # common control registers
+                if "cutoff" in common:
+                    sid.set_filter_cutoff( common["cutoff"] )
+
+                if "res" in common:
+                    sid.set_filter_resonance( common["res"] )
+
+                if "v" in common:
+                    sid.set_master_volume( common["v"] )
+
+                if "filter" in common:
+                    sid.set_filter_control( common["filter"] )
+
+                if "typ" in common:
+                    sid.set_filter_mode( common["typ"] )
+
+
 
                 # control registers
                 if "wf" in voice1:
@@ -927,6 +1069,9 @@ class SidReader(object):
                     if ym_noise_value > 31:
                         ym_noise_value = 31
                         print("YM Noise value CLIPPED to 31")
+                    
+                    
+                    ym_noise_value = 2
                     registers[6] = ym_noise_value
 
                 # TODO: handle noise frequency. Problematic if three voices have different noise frequencies set
@@ -938,6 +1083,11 @@ class SidReader(object):
                 ym_mixer_2 = (2+16) if sid_voice2.isMute() else ym_mixer_2
                 ym_mixer_3 = (4+32) if sid_voice3.isMute() else ym_mixer_3
 
+                # handle 3off case
+                if sid.is3off():
+                    ym_mixer_3 = (4+32)
+                    print("SID 3OFF SET, so Voice 3 is mute")
+
                 # handle test bit as an override on the waveform output
                 #ym_mixer_1 = (1+8) if sid_voice1.isTest() else ym_mixer_1
                 #ym_mixer_2 = (2+16) if sid_voice2.isTest() else ym_mixer_2
@@ -948,7 +1098,11 @@ class SidReader(object):
 
 
                 def sid_to_ym_volume(v):
-                    fv = float(v) / 255.0
+                    # scale by master volume current set on the SID
+                    sv = (v * sid.get_master_volume() ) / 15.0
+                    # normalise volume
+                    fv = float(sv) / 255.0
+                    # convert to logarithmic YM volume
                     ymv = get_ym_volume(fv)
                     print("SID Volume=" + str(v) + ", YM Volume=" + str(ymv) + ", Linear YM Volume=" + str(v>>3))
                     return ymv
@@ -957,6 +1111,8 @@ class SidReader(object):
                 if ENABLE_ADSR:
                     # linear sid volume output from the envelope generator is
                     # converted to logarithmic 4-bit amplitude on the YM
+
+
                     registers[8] = sid_to_ym_volume( sid_voice1.get_envelope_level() ) >> 1
                     registers[9] = sid_to_ym_volume( sid_voice2.get_envelope_level() ) >> 1
                     registers[10] = sid_to_ym_volume( sid_voice3.get_envelope_level() ) >> 1
