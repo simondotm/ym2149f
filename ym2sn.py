@@ -324,8 +324,10 @@ def get_sn_volume(ym_volume):
         # use lookup table
         return ym_sn_volume_table[ym_volume]
     else:
-        # simple attenuation map
-        return (ym_volume >> 1) & 15
+        # simple attenuation map, with offset 
+        #print("volA=" + str((min(ym_volume+1, 31) >> 1) & 15) + ", volB=" + str((ym_volume >> 1) & 15))
+        return (min(ym_volume+1, 31) >> 1) & 15
+        #return (ym_volume >> 1) & 15
 
 
 
@@ -899,6 +901,9 @@ class YmReader(object):
         # number of frames using envelopes
         ym_env_count = 0 
 
+        # number of notes "lost" to tuned white noise (if ENABLE_TUNED_NOISE flag enabled)
+        ym_lost_notes = 0
+        
         # latch data for optimizing the output vgm to only output changes in register state
         # make sure the initial values are guaranteed to get an output on first run
         sn_attn_latch = [ -1, -1, -1, -1 ]
@@ -1594,25 +1599,36 @@ class YmReader(object):
             if ENABLE_NOISE:
                 if (ym_mix_noise_a or ym_mix_noise_b or ym_mix_noise_c):
 
-                    if ym_mix_noise_a:# and ym_volume_a > 0: # and not ym_mix_tone_a:
+                    if ym_mix_noise_a and ym_volume_a > 1: # and not ym_mix_tone_a:
                         noise_active += 1
-                    if ym_mix_noise_b:# and ym_volume_b > 0: # and not ym_mix_tone_b:
+                    if ym_mix_noise_b and ym_volume_b > 1: # and not ym_mix_tone_b:
                         noise_active += 1
-                    if ym_mix_noise_c: # and ym_volume_c > 0: # and not ym_mix_tone_c:
+                    if ym_mix_noise_c and ym_volume_c > 1: # and not ym_mix_tone_c:
                         noise_active += 1
 
-                    if ENABLE_DEBUG:
+                    # some of the noise frequencies are impercetible, so filter these out
+                    NOISE_FREQ_FILTER = 1
+                    if ym_noise < NOISE_FREQ_FILTER:
+                        if ENABLE_DEBUG:
+                            print(" Noise frequency (" + str(ym_noise) + ") too high - filtered out")
+                        noise_active = 0
+
+
+                    if ENABLE_DEBUG and noise_active:
                         print("  Noise active on " + str(noise_active) + " channels, ym_noise=" + str(ym_noise))
 
-                    if ENABLE_DEBUG:
+                    if ENABLE_DEBUG and noise_active:
                         # some debug code to see if there really are
                         # occasions where noise is active but volume for the channel is 0
                         # this is often because envelopes are being used
-                        if ym_volume_a == 0 and ym_mix_noise_a:
+                        #if ym_volume_a == 0 and ym_mix_noise_a:
+                        if ym_volume_a < 2 and ym_mix_noise_a:
                             print(" - Channel A has noise enabled but no channel volume")
-                        if ym_volume_b == 0 and ym_mix_noise_b:
+                        #if ym_volume_b == 0 and ym_mix_noise_b:
+                        if ym_volume_b < 2 and ym_mix_noise_b:
                             print(" - Channel B has noise enabled but no channel volume")
-                        if ym_volume_c == 0 and ym_mix_noise_c:
+                        #if ym_volume_c == 0 and ym_mix_noise_c:
+                        if ym_volume_c < 2 and ym_mix_noise_c:
                             print(" - Channel C has noise enabled but no channel volume")
 
 
@@ -1834,12 +1850,15 @@ class YmReader(object):
                         min_dist = dist
                         sn_noise = 2
                     
-                    # arbitary error of 3Khz triggers tuned noise
-                    if ENABLE_DEBUG:
-                        if ENABLE_TUNED_NOISE and min_dist > 3000:
-                            print("TIME TO TUNE SOME NOISE")
-                        else:
-                            print("NEAR ENOUGH TO FIXED FREQUENCY")
+                    # arbitary frequency distance more than 3Khz triggers tuned white noise
+                    if ENABLE_TUNED_NOISE and min_dist > 3000:
+                        if ENABLE_DEBUG:
+                            print(" - Using Tuned White Noise for frequency " + str(noise_freq) + "Hz")
+                    else:
+                        if ENABLE_DEBUG:
+                            print(" - Using Fixed Frequency White Noise " + str(sn_noise) + " for target freq " + str(noise_freq) + "Hz, distance " + str(min_dist) + "Hz")
+                        # disable use of tuned white noise by setting this here
+                        sn_noise_freq = 0
 
                     # TODO: remove this
                     if False:
@@ -1862,7 +1881,7 @@ class YmReader(object):
                     sn_tone_out[3] = 3 # Tuned Periodic noise
 
             # sanity check. was previously a bug.
-            if sn_tone_out[3] == 0 and sn_attn_out[3] != 0:
+            if sn_tone_out[3] == 0 and sn_attn_out[3] != -1:
                 print("WARNING: Noise tone 0 - should not happen! attenuation=" + str(sn_attn_out[3]) )
 
 
@@ -2005,21 +2024,9 @@ class YmReader(object):
                 sn_attn_out[channel_map_c] = get_sn_volume(ym_volume_c)
 
 
-                if ENABLE_TUNED_NOISE and sn_noise_freq > 0:
-                    sn_tone_out[3] = 4 + 3 # bit 2 selects White noise, 0/1/2 are fixed low frequency (16 cycle) (3 is the tuned white noise)
-                    
-                    if (ym_noise > 0):
-                        ym_noise_freq = float(clock) / (16.0 * ym_noise)
-                    else:
-                        ym_noise_freq = 1
-
-                    sn_noise_tone = int( 0.5 + float(vgm_clock) / (SN_NOISE_DC * ym_noise_freq * 16.0) )
-
-                    sn_tone_out[2] = sn_noise_tone #4 #sn_noise_freq
-                    sn_attn_out[2] = 0
-                    if ENABLE_DEBUG:
-                        print(" - TUNED NOISE OVERRODE CHANNEL 3")
-
+                #------------------------------------------------
+                # Process noise and/or periodic bass
+                #------------------------------------------------
 
                 # then noise or bass
                 if noise_active:
@@ -2050,6 +2057,118 @@ class YmReader(object):
                     else:
                         # no noise, no bass, so just turn off noise channel
                         sn_attn_out[3] = 0
+
+
+                #------------------------------------------------------------------------------------
+                # Process tuned white noise
+                # Both the YM and SN have just one noise generator so
+                # this features gives us a white noise range
+                # that matches the YM almost exactly
+                #
+                # Tuned white noise gives much better percussive reproduction
+                # but requires us to "steal" channel C for setting the white noise frequency
+                # (similar to how the periodic bass works)
+                # We try our best to reallocate notes currently playing on Channel C where possible
+                #------------------------------------------------------------------------------------
+
+
+                # sn_noise_freq is 0 if earlier code selected a fixed frequency white noise, or no white noise is playing
+                if ENABLE_TUNED_NOISE and noise_active and sn_noise_freq > 0:
+                    # we are going to play tuned white noise on the noise channel
+                    # the pitch is controlled by channel C which must be muted
+                    # if any audible notes are currently playing on channel C we'll try to reallocate them where possible
+                    # but percussion drives the tune so we always give it priority
+
+                    sn_tone_out[3] = 4 + 3 # bit 2 selects White noise, 0/1/2 are fixed low frequency (16 cycle) (3 is the tuned white noise)
+                    
+                    if (ym_noise > 0):
+                        ym_noise_freq = float(clock) / (16.0 * ym_noise)
+                    else:
+                        ym_noise_freq = 1
+
+                    sn_noise_tone = int( 0.5 + float(vgm_clock) / (SN_NOISE_DC * ym_noise_freq * 16.0) )
+
+                    reallocated = False
+
+                    if ENABLE_DEBUG:
+                        print(" - TUNED NOISE OVERRIDE ON CHANNEL C")
+
+                    # We have to steal channel C to play our tuned white noise.
+                    # Since there may be an audible note already playing on channel C
+                    # the music may be impacted if we don't pay attention to this.
+                    # There are a few strategies we can use to attempt to reallocate it.
+
+                    # strategy #1 - if simulated bass is active, we just withhold the bass and the bass note is stolen
+                    # this is the only realistic option because bass notes are played with periodic noise and
+                    # we cannot play two noises at once. Also, the frequency on channel C has been adjusted for
+                    # the periodic noise frequency and won't move easily to channel A or B without retuning.
+                    if not reallocated and bass_active:
+                        if ENABLE_DEBUG:
+                            print("  - stealing bass note on Channel C")
+                        reallocated = True
+
+                    # next up, check if channel C is actually playing anything right now, we can move on if not.
+                    VOLUME_OFF_THRESHOLD = 2
+                    old_volumeC = sn_attn_out[2]
+                    if not reallocated and (old_volumeC < VOLUME_OFF_THRESHOLD):
+                        if ENABLE_DEBUG:
+                            print("  - Nothing playing on Channel C, using tuned white noise without side effect")
+                        reallocated = True
+
+                    # now we can work through a few other strategies if channel C is active and can be reallocated to another channel
+
+                    if not reallocated and (old_volumeC >= VOLUME_OFF_THRESHOLD):
+
+                        # strategy #2 - see if there is another channel free that we can reallocate channel C to.
+                        #print(" - STOLEN CHANNEL C, which was playing at volume=" + str(sn_attn_out[2]) + ", tone=" + str(sn_tone_out[2]))
+                        old_volumeB = sn_attn_out[1]
+                        old_volumeA = sn_attn_out[0]
+                        if not reallocated:
+                            if old_volumeB < VOLUME_OFF_THRESHOLD:
+                                if ENABLE_DEBUG:
+                                    print("  - reallocated channel C to channel B, it has volume < " + str(VOLUME_OFF_THRESHOLD))
+                                sn_attn_out[1] = sn_attn_out[2]
+                                sn_tone_out[1] = sn_tone_out[2]
+                                reallocated = True
+
+                            if old_volumeA < VOLUME_OFF_THRESHOLD and not reallocated: #2
+                                if ENABLE_DEBUG:
+                                    print("  - reallocated channel C to channel A, it has volume < " + str(VOLUME_OFF_THRESHOLD))
+                                sn_attn_out[0] = sn_attn_out[2]
+                                sn_tone_out[0] = sn_tone_out[2]
+                                reallocated = True
+
+                        # strategy #3 - select a channel thats got the lowest volume and steal it.
+                        # might be better to first select a channel thats significantly quieter for more imperceptible side effects
+                        if not reallocated:
+
+                            if old_volumeB < old_volumeC and old_volumeB < old_volumeA:
+                                if ENABLE_DEBUG:
+                                    print("  - using channel B instead, it has lowest volume")
+                                sn_attn_out[1] = sn_attn_out[2]
+                                sn_tone_out[1] = sn_tone_out[2]
+                                reallocated = True
+
+                        if not reallocated:
+                            if old_volumeA < old_volumeC and old_volumeA < old_volumeB:
+                                if ENABLE_DEBUG:
+                                    print("  - using channel A instead, it has lowest volume")
+                                sn_attn_out[0] = sn_attn_out[2]
+                                sn_tone_out[0] = sn_tone_out[2]
+                                reallocated = True
+
+                    # all of our reallocation strategies failed, accept that we lost a note here.
+                    if not reallocated:
+                        ym_lost_notes += 1
+                        if ENABLE_DEBUG:
+                            print("  - NOTE ON CHANNEL C WAS LOST TO PERCUSSION AS IT COULD NOT BE REALLOCATED TO ANOTHER CHANNEL")
+
+
+                    # rewrite channel C with the muted & tuned white noise frequency
+                    sn_tone_out[2] = sn_noise_tone #4 #sn_noise_freq
+                    sn_attn_out[2] = 0
+
+
 
 
                 # Double check that all attenuation channels have been processed correctly
@@ -2155,7 +2274,10 @@ class YmReader(object):
 
         print("  Envelope Hz range - " + str( ym_env_freq_min ) + "Hz to " + str( ym_env_freq_max ) + "Hz")
         print("        Noise range - " + str( ym_noise_min ) + " to " + str( ym_noise_max ) + " ")
-
+        print("")
+        if ENABLE_TUNED_NOISE:
+            print(" Notes that were 'lost' because of tuned white noise - " + str(ym_lost_notes))
+            print("")
 
         #--------------------------------------------
         # Output the VGM
