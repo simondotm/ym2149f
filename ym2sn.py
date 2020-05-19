@@ -34,6 +34,8 @@ import math
 import os
 from os.path import basename
 
+PYTHON_VERSION = sys.version_info[0]    # returns 2 or >=3
+
 
 # Command line can override these defaults
 SN_CLOCK = 4000000              # set this to the target SN chip clock speed
@@ -919,17 +921,23 @@ class YmReader(object):
             # some tunes have incorrect data stream lengths, handle that here.
             if r < len(regs) and i < self.__header['nb_frames'] and i < len(regs[r]) :
                 n = regs[r][i]
-                # this is some python2.7/3.x bullshit
+                        
+                # handle python2.7/3.x bullshit
+                if PYTHON_VERSION > 2:
+                    return int(n)
+                else:
+                    return int(binascii.hexlify(n), 16) # seems to work with Python 2
+
                 # can't figure out how to parse these bytes in a way that runs on both 2.7 and 3.x
-                try:
-                    v = int(n)
-                except:
-                    # some conversion shit happened.
-                    v = int( struct.unpack('B', n)[0] ) #n = n # woteva
-                finally:
-                    return v #int( struct.unpack('B', n)[0] )
-                #v = int( struct.unpack('B', n)[0] )
-                #return v #int( struct.unpack('B', n)[0] ) #int(n) #int(binascii.hexlify(n), 16)
+                #try:
+                #    v = int(n)
+                #except:
+                #    # some conversion shit happened.
+                #    v = int( struct.unpack('B', n)[0] ) #n = n # woteva
+                #finally:
+                #    return int(binascii.hexlify(n), 16) # seems to work with Python 2
+                #    # return v
+                #    # return int( struct.unpack('B', n)[0] )
             else:
                 print("ERROR: Register out of range - bad sample ID or corrupt file?")
                 return 0
